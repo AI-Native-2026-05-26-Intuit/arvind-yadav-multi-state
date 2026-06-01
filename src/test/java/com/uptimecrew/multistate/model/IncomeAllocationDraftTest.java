@@ -5,6 +5,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -34,11 +36,17 @@ class IncomeAllocationDraftTest {
         ));
     }
 
-    @Test
-    void rejects_negative_amount() {
+    @ParameterizedTest(name = "rejects amount = {0}")
+    @CsvSource({
+        "-0.01",
+        "-1.00",
+        "-12500.00",
+        "-100000.00"
+    })
+    void rejects_negative_amount(String amount) {
         assertThrows(IllegalArgumentException.class, () -> new IncomeAllocationDraft(
             "alloc-synth-001",
-            new BigDecimal("-1.00"),
+            new BigDecimal(amount),
             "CA",
             LocalDate.of(2026, 3, 1)
         ));
