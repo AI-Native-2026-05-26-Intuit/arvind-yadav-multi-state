@@ -2,8 +2,11 @@ package com.uptimecrew.multistate.service;
 
 import com.uptimecrew.multistate.model.IncomeAllocation;
 
+import java.math.BigDecimal;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -48,5 +51,17 @@ public final class AllocationRegistry {
     public Optional<IncomeAllocation> findById(String id) {
         Objects.requireNonNull(id, "id");
         return Optional.ofNullable(allocationsById.get(id));
+    }
+
+    public List<IncomeAllocation> findByJurisdictionAbove(String jurisdictionCode, BigDecimal threshold) {
+        Objects.requireNonNull(jurisdictionCode, "jurisdictionCode");
+        Objects.requireNonNull(threshold, "threshold");
+        return allocationsById.values().stream()
+            .filter(allocation -> allocation.jurisdictionCode().equals(jurisdictionCode)
+                && allocation.amount().compareTo(threshold) > 0)
+            .sorted(Comparator.comparing(IncomeAllocation::amount).reversed()
+                .thenComparing(IncomeAllocation::allocatedFor)
+                .thenComparing(IncomeAllocation::id))
+            .toList();
     }
 }
