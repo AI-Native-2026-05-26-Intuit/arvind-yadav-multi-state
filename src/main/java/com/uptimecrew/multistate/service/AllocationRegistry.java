@@ -26,7 +26,7 @@ public final class AllocationRegistry {
                     "duplicate allocation id: " + allocation.id());
             }
         }
-        this.allocationsById = copy;
+        this.allocationsById = Map.copyOf(copy);
     }
 
     public AllocationRegistry(Map<String, IncomeAllocation> allocations) {
@@ -41,7 +41,7 @@ public final class AllocationRegistry {
             }
             copy.put(key, value);
         }
-        this.allocationsById = copy;
+        this.allocationsById = Map.copyOf(copy);
     }
 
     public int size() {
