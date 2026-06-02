@@ -6,6 +6,13 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Objects;
 
+/**
+ * Pre-persistence shape of an {@link IncomeAllocation} — same fields minus {@code workerId}.
+ * Used while a batch of allocations is being assembled for a single worker: the worker is
+ * known to the caller and is attached when drafts are promoted to {@code IncomeAllocation}.
+ *
+ * <p>Same money invariants as {@code IncomeAllocation}: non-negative, scale 2, HALF_UP.
+ */
 public final class IncomeAllocationDraft {
 
     private final String id;

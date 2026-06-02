@@ -3,6 +3,15 @@ package com.uptimecrew.multistate.model;
 import java.time.LocalDate;
 import java.util.Objects;
 
+/**
+ * One day of work performed by a worker, attributed to a single jurisdiction.
+ * The raw input to {@link com.uptimecrew.multistate.service.AllocationStrategy}:
+ * a collection of WorkDays defines where a worker's time was spent over a period,
+ * which in turn drives how income for that period is split.
+ *
+ * <p>{@code jurisdictionCode} is the {@link Jurisdiction#code()} the day is attributed to
+ * (held by code rather than reference so WorkDays don't carry a full Jurisdiction graph).
+ */
 public final class WorkDay {
 
     private final String id;

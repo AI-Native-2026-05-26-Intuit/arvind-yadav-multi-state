@@ -5,6 +5,15 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Objects;
 
+/**
+ * The result of running an {@link com.uptimecrew.multistate.service.AllocationStrategy}:
+ * a portion of one worker's income assigned to one jurisdiction for one allocation period
+ * (typically a pay period or filing period, identified by {@code allocatedFor}).
+ *
+ * <p>{@code amount} is always non-negative, scale 2, HALF_UP — the canonical money shape
+ * for this project. A full allocation run produces one IncomeAllocation per jurisdiction
+ * the worker touched during the period.
+ */
 public final class IncomeAllocation {
 
     private final String id;
