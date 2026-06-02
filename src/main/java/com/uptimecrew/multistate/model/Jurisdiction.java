@@ -2,6 +2,13 @@ package com.uptimecrew.multistate.model;
 
 import java.util.Objects;
 
+/**
+ * A taxing authority that income can be allocated to. Identified by {@code code}
+ * (e.g. {@code "US-CA"}, {@code "US-CA-SF"}); the {@code displayName} is for humans
+ * and {@link JurisdictionKind} indicates the level of government.
+ *
+ * <p>Value object: equality is by all three fields.
+ */
 public final class Jurisdiction {
 
     private final String code;
