@@ -14,21 +14,15 @@ import java.util.Objects;
  * for this project. A full allocation run produces one IncomeAllocation per jurisdiction
  * the worker touched during the period.
  */
-public final class IncomeAllocation {
+public record IncomeAllocation(
+    String id,
+    String workerId,
+    String jurisdictionCode,
+    BigDecimal amount,
+    LocalDate allocatedFor
+) {
 
-    private final String id;
-    private final String workerId;
-    private final String jurisdictionCode;
-    private final BigDecimal amount;
-    private final LocalDate allocatedFor;
-
-    public IncomeAllocation(
-        String id,
-        String workerId,
-        String jurisdictionCode,
-        BigDecimal amount,
-        LocalDate allocatedFor
-    ) {
+    public IncomeAllocation {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(jurisdictionCode, "jurisdictionCode");
@@ -46,55 +40,6 @@ public final class IncomeAllocation {
         if (amount.signum() < 0) {
             throw new IllegalArgumentException("amount must not be negative: " + amount);
         }
-        this.id = id;
-        this.workerId = workerId;
-        this.jurisdictionCode = jurisdictionCode;
-        this.amount = amount.setScale(2, RoundingMode.HALF_UP);
-        this.allocatedFor = allocatedFor;
-    }
-
-    public String id() {
-        return id;
-    }
-
-    public String workerId() {
-        return workerId;
-    }
-
-    public String jurisdictionCode() {
-        return jurisdictionCode;
-    }
-
-    public BigDecimal amount() {
-        return amount;
-    }
-
-    public LocalDate allocatedFor() {
-        return allocatedFor;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof IncomeAllocation other)) return false;
-        return id.equals(other.id)
-            && workerId.equals(other.workerId)
-            && jurisdictionCode.equals(other.jurisdictionCode)
-            && amount.equals(other.amount)
-            && allocatedFor.equals(other.allocatedFor);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id, workerId, jurisdictionCode, amount, allocatedFor);
-    }
-
-    @Override
-    public String toString() {
-        return "IncomeAllocation[id=" + id
-            + ", workerId=" + workerId
-            + ", jurisdictionCode=" + jurisdictionCode
-            + ", amount=" + amount
-            + ", allocatedFor=" + allocatedFor + "]";
+        amount = amount.setScale(2, RoundingMode.HALF_UP);
     }
 }
