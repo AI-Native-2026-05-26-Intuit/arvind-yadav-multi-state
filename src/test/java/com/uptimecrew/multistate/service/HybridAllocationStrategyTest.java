@@ -132,6 +132,24 @@ class HybridAllocationStrategyTest {
     }
 
     @Test
+    void contract_jurisdictions_only_in_one_delegate_contribute_zero_from_the_other() {
+        AllocationStrategy primary = new DayCountAllocationStrategy();
+        AllocationStrategy secondary = (workerId, total, days, period) -> List.of(
+            new IncomeAllocation(
+                "fake-ca", workerId, "CA", new BigDecimal("12500.00"), period));
+
+        AllocationStrategy hybrid = new HybridAllocationStrategy(
+            primary, secondary, new BigDecimal("0.50"));
+
+        Map<String, BigDecimal> by = byJurisdiction(
+            hybrid.allocate("emp_42", TOTAL, threeDaysCaOneDayNy(), PERIOD));
+
+        assertEquals(2, by.size());
+        assertEquals(0, new BigDecimal("10937.50").compareTo(by.get("CA")));
+        assertEquals(0, new BigDecimal("1562.50").compareTo(by.get("NY")));
+    }
+
+    @Test
     void equals_and_hashCode_reflect_primary_secondary_weight() {
         DayCountAllocationStrategy day = new DayCountAllocationStrategy();
         IncomeProportionalAllocationStrategy income1 = incomeSkewedToNy();
