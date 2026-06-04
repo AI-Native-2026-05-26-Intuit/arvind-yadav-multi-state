@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.uptimecrew.multistate.exception.IncomeAllocationFailedException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
 
@@ -72,8 +73,11 @@ class IncomeProportionalAllocationStrategyTest {
         List<WorkDay> workDays = List.of(
             new WorkDay("wd-1", "emp_42", "OR", LocalDate.of(2026, 3, 1))
         );
-        assertThrows(IllegalArgumentException.class, () ->
-            strategy.allocate("emp_42", new BigDecimal("100.00"), workDays, PERIOD));
+        IncomeAllocationFailedException ex = assertThrows(
+            IncomeAllocationFailedException.class, () ->
+                strategy.allocate("emp_42", new BigDecimal("100.00"), workDays, PERIOD));
+        assertTrue(ex.getCause() instanceof java.io.IOException,
+            "expected IOException cause, got " + ex.getCause());
     }
 
     @Test
