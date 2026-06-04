@@ -1,7 +1,11 @@
 package com.uptimecrew.multistate.service;
 
+import com.uptimecrew.multistate.exception.AllocationException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,6 +21,8 @@ import java.util.Objects;
  * returns the result as an unmodifiable list so downstream code cannot mutate it.
  */
 public final class AllocationService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AllocationService.class);
 
     private final AllocationStrategy strategy;
 
@@ -38,8 +44,18 @@ public final class AllocationService {
             throw new IllegalArgumentException("totalIncome must not be negative: " + totalIncome);
         }
 
-        List<IncomeAllocation> result =
-            strategy.allocate(workerId, totalIncome, workDays, allocatedFor);
-        return List.copyOf(result);
+        LOG.info("invoking strategy={} for workerId={} totalIncome={} workDays={} allocatedFor={}",
+            strategy.getClass().getSimpleName(), workerId, totalIncome, workDays.size(), allocatedFor);
+        try {
+            List<IncomeAllocation> result =
+                strategy.allocate(workerId, totalIncome, workDays, allocatedFor);
+            List<IncomeAllocation> immutable = List.copyOf(result);
+            LOG.info("strategy={} returned allocations={} for workerId={}",
+                strategy.getClass().getSimpleName(), immutable.size(), workerId);
+            return immutable;
+        } catch (AllocationException ex) {
+            LOG.warn("strategy failed: {}", ex.getMessage(), ex);
+            throw ex;
+        }
     }
 }
