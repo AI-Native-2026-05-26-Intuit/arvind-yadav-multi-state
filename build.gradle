@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'jacoco'  
 }
 
 group   = 'com.uptimecrew.multistate'
@@ -31,8 +32,30 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport                // (2) report after every test run
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true
     }
 }
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        html.required = true                    // (3) HTML report for humans
+        xml.required  = true                    // (4) XML for CI tools
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                counter = 'BRANCH'              // (5) branch coverage, not line
+                minimum = 0.70                  // (6) floor: fail the build below 70%
+            }
+        }
+    }
+}
+
+check.dependsOn jacocoTestCoverageVerification  // (7) gate `./gradlew check`
