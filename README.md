@@ -99,6 +99,8 @@ src/test/java/com/uptimecrew/multistate/
 
 Package root: `com.uptimecrew.multistate`. New code goes under this root.
 
+The `db/` directory holds the Postgres schema (`V1__schema.sql`), seed (`V2__seed.sql`), verification queries (`verify.sql`), and ER diagram + design notes (`db/README.md`).
+
 ## Coding standards
 
 See [CLAUDE.md](CLAUDE.md) for the hard rules. Highlights: JDK 17+, `BigDecimal` (scale 2, HALF_UP) for all money, `String` IDs, `java.time` for dates and timestamps, `private final` by default, JUnit 5. Mockito is allowed where it expresses the scenario more clearly than a hand-rolled fake (e.g. exception-path stubs).
