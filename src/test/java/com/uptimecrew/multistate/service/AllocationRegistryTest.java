@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import com.uptimecrew.multistate.model.IncomeAllocation;
+import com.uptimecrew.multistate.model.IncomeAllocationTestDataBuilder;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,7 +25,13 @@ class AllocationRegistryTest {
         String amount,
         LocalDate allocatedFor
     ) {
-        return new IncomeAllocation(id, "emp_1", jurisdiction, new BigDecimal(amount), allocatedFor);
+        return IncomeAllocationTestDataBuilder.aIncomeAllocation()
+            .withId(id)
+            .withWorkerId("emp_1")
+            .withJurisdictionCode(jurisdiction)
+            .withAmount(new BigDecimal(amount))
+            .withAllocatedFor(allocatedFor)
+            .build();
     }
 
     @Test

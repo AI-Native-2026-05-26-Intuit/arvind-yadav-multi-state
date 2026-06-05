@@ -7,10 +7,15 @@ A Java domain library for splitting a worker's income across the tax jurisdictio
 ```bash
 ./gradlew build       # compile + test
 ./gradlew test        # run JUnit 5 tests
+./gradlew check       # tests + JaCoCo branch-coverage gate (≥ 0.70)
 ./gradlew clean       # wipe build outputs
 ```
 
 Requires JDK 17+.
+
+## Coverage
+
+JaCoCo is wired into the build. After any test run, the HTML report lives at `build/reports/jacoco/test/html/index.html` and the XML report at `build/reports/jacoco/test/jacocoTestReport.xml`. `./gradlew check` is gated by `jacocoTestCoverageVerification` — the build fails if **branch** coverage drops below **0.70**. Current snapshot: project total 86% branch / 96% instruction; `com.uptimecrew.multistate.service` 89% branch / 97% instruction.
 
 ## Domain model
 
@@ -22,6 +27,7 @@ Located under [src/main/java/com/uptimecrew/multistate/model/](src/main/java/com
 | [WorkDay](src/main/java/com/uptimecrew/multistate/model/WorkDay.java) | One day of work attributed to one jurisdiction — the raw input to allocation. |
 | [IncomeAllocation](src/main/java/com/uptimecrew/multistate/model/IncomeAllocation.java) | The result: a portion of a worker's income assigned to a jurisdiction for a given pay period. Money is `BigDecimal`, scale 2, HALF_UP. |
 | [IncomeAllocationDraft](src/main/java/com/uptimecrew/multistate/model/IncomeAllocationDraft.java) | A pre-persistence shape of an allocation — same fields minus `workerId`, used while a batch is being assembled. |
+| [IncomeAllocationTestDataBuilder](src/main/java/com/uptimecrew/multistate/model/IncomeAllocationTestDataBuilder.java) | Fluent builder for `IncomeAllocation`. Lives in production so tests in any module can call `IncomeAllocationTestDataBuilder.aIncomeAllocation().withAmount(...).build()`. Defaults satisfy the record's compact-constructor validation; override only what the test cares about. |
 
 ## Allocation strategies
 
@@ -31,6 +37,7 @@ Located under [src/main/java/com/uptimecrew/multistate/service/](src/main/java/c
 - [DayCountAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/DayCountAllocationStrategy.java) — splits income proportionally to the count of work days in each jurisdiction, rounding each share HALF_UP. Throws [JurisdictionUnsupportedException](src/main/java/com/uptimecrew/multistate/exception/JurisdictionUnsupportedException.java) on negative `totalIncome`. Known limitation: rounded shares may not re-sum to the total to the penny.
 - [IncomeProportionalAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/IncomeProportionalAllocationStrategy.java) — splits income across the participating jurisdictions in proportion to a configured per-jurisdiction revenue map. When a work day references a jurisdiction with no configured revenue, the lookup failure is wrapped (with the underlying cause preserved) and rethrown as [IncomeAllocationFailedException](src/main/java/com/uptimecrew/multistate/exception/IncomeAllocationFailedException.java).
 - [HybridAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/HybridAllocationStrategy.java) — blends two delegate strategies by a fixed `primaryWeight` in `[0, 1]`, summing per-jurisdiction contributions and rounding HALF_UP to scale 2.
+- [WeightedDayCountAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/WeightedDayCountAllocationStrategy.java) — splits income by **business-day** count (Mon–Fri; weekends filtered) weighted by a per-jurisdiction factor (default `1.00`). Shares are HALF_UP to scale 2. Negative `totalIncome` raises `JurisdictionUnsupportedException`. Built test-first; see [WeightedDayCountAllocationStrategyTest](src/test/java/com/uptimecrew/multistate/service/WeightedDayCountAllocationStrategyTest.java).
 - [AllocationStrategies](src/main/java/com/uptimecrew/multistate/service/AllocationStrategies.java) — factory façade exposing `byDayCount()`, `byIncomeProportion(...)`, and `byHybridBlend(...)`; non-instantiable.
 - [AllocationRegistry](src/main/java/com/uptimecrew/multistate/service/AllocationRegistry.java) — name → strategy lookup so callers can resolve a strategy by key.
 - [AllocationService](src/main/java/com/uptimecrew/multistate/service/AllocationService.java) — domain service that runs an injected strategy. Validates inputs at the boundary, logs INFO on entry and on successful return via SLF4J's `{}`-parameterised form, and wraps the delegation in a `catch (AllocationException ex)` that logs WARN with the exception attached (so the stack trace renders) before rethrowing. No broader `RuntimeException` / `Exception` / `Throwable` catches.
@@ -51,10 +58,19 @@ Located under [src/main/java/com/uptimecrew/multistate/exception/](src/main/java
 
 JUnit 5 throughout. Mockito (with `MockitoExtension`) is used where stubbing a strategy is the clearest way to express a scenario; real objects and hand-rolled fakes are preferred for pure domain logic. AssertJ provides the fluent exception assertions used in the exception-path tests (`assertThatThrownBy(...).hasRootCauseInstanceOf(...)`).
 
+Test conventions for new code (Day 5 onward):
+
+- **AAA markers** — every test body carries explicit `// Arrange` / `// Act` / `// Assert` comment markers.
+- **Naming** — `methodUnderTest_condition_expectation`, mirrored in a `@DisplayName`.
+- **AssertJ only** in new test files — `assertThat` / `assertThatThrownBy`; no `org.junit.jupiter.api.Assertions` static imports.
+- **Test data builders** — prefer `IncomeAllocationTestDataBuilder.aIncomeAllocation().withX(...).build()` over calling the record constructor directly, so tests describe only the fields they care about.
+
 Notable test classes:
 
+- [WeightedDayCountAllocationStrategyTest](src/test/java/com/uptimecrew/multistate/service/WeightedDayCountAllocationStrategyTest.java) — TDD-built suite for the Day 5 strategy. Four AAA-shaped tests covering happy path, negative-input rejection, empty-input edge case, and weighted business-day math.
 - [AllocationServiceTest](src/test/java/com/uptimecrew/multistate/service/AllocationServiceTest.java) — boundary validation and happy-path delegation.
-- [AllocationServiceMockitoTest](src/test/java/com/uptimecrew/multistate/service/AllocationServiceMockitoTest.java) — verifies the service delegates to the injected strategy.
+- [AllocationServiceMockitoTest](src/test/java/com/uptimecrew/multistate/service/AllocationServiceMockitoTest.java) — verifies the service delegates to the injected strategy; uses `IncomeAllocationTestDataBuilder`.
+- [AllocationRegistryTest](src/test/java/com/uptimecrew/multistate/service/AllocationRegistryTest.java) — registry semantics; uses `IncomeAllocationTestDataBuilder`.
 - [AllocationServiceExceptionPathTest](src/test/java/com/uptimecrew/multistate/service/AllocationServiceExceptionPathTest.java) — typed exception propagation, root-cause preservation, and WARN-log emission.
 - [HybridAllocationStrategyTest](src/test/java/com/uptimecrew/multistate/service/HybridAllocationStrategyTest.java) — blend behaviour, including the divergent-jurisdiction contract.
 
