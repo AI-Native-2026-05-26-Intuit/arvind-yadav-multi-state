@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.uptimecrew.multistate.model.IncomeAllocation;
+import com.uptimecrew.multistate.model.IncomeAllocationTestDataBuilder;
 import com.uptimecrew.multistate.model.WorkDay;
 
 import org.junit.jupiter.api.Test;
@@ -31,8 +32,14 @@ class AllocationServiceMockitoTest {
         );
         LocalDate allocatedFor = LocalDate.of(2026, 3, 31);
 
-        List<IncomeAllocation> stubbedReturn = List.of(new IncomeAllocation(
-            "alloc-001", "emp_42", "CA", new BigDecimal("12500.00"), allocatedFor));
+        List<IncomeAllocation> stubbedReturn = List.of(
+            IncomeAllocationTestDataBuilder.aIncomeAllocation()
+                .withId("alloc-001")
+                .withWorkerId("emp_42")
+                .withJurisdictionCode("CA")
+                .withAmount(new BigDecimal("12500.00"))
+                .withAllocatedFor(allocatedFor)
+                .build());
 
         when(strategy.allocate(any(), any(), any(), any())).thenReturn(stubbedReturn);
 
