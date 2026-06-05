@@ -1,5 +1,6 @@
 package com.uptimecrew.multistate.service;
 
+import com.uptimecrew.multistate.exception.IncomeAllocationFailedException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
 
@@ -73,8 +74,16 @@ public final class IncomeProportionalAllocationStrategy implements AllocationStr
         for (String code : participating) {
             BigDecimal weight = incomeByJurisdiction.get(code);
             if (weight == null) {
-                throw new IllegalArgumentException(
-                    "no configured income for jurisdiction: " + code);
+                try {
+                    /* simulate a read that could fail in production */
+                    throw new java.io.IOException(
+                        "synthetic cause: revenue lookup missed for " + code);
+                } catch (java.io.IOException cause) {
+                    throw new IncomeAllocationFailedException(
+                        "failed reading day-count source for tenant-a "
+                            + "(no configured income for jurisdiction: " + code + ")",
+                        cause);
+                }
             }
             weightSum = weightSum.add(weight);
         }

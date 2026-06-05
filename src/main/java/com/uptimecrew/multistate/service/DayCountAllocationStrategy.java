@@ -1,5 +1,6 @@
 package com.uptimecrew.multistate.service;
 
+import com.uptimecrew.multistate.exception.JurisdictionUnsupportedException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
 
@@ -32,7 +33,9 @@ public final class DayCountAllocationStrategy implements AllocationStrategy {
         Objects.requireNonNull(workDays, "workDays");
         Objects.requireNonNull(allocatedFor, "allocatedFor");
         if (totalIncome.signum() < 0) {
-            throw new IllegalArgumentException("totalIncome must not be negative: " + totalIncome);
+            throw new JurisdictionUnsupportedException(
+                "DayCountAllocationStrategy cannot allocate negative totalIncome: "
+                    + totalIncome + " for worker " + workerId);
         }
         if (workDays.isEmpty()) {
             return List.of();
