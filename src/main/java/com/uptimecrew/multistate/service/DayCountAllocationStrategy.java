@@ -4,6 +4,9 @@ import com.uptimecrew.multistate.exception.JurisdictionUnsupportedException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
 
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Component;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -18,7 +21,12 @@ import java.util.UUID;
  * Day 1 strategy: split totalIncome across jurisdictions in proportion to the number of
  * WorkDays in each, rounding every share with HALF_UP. Naive — shares may not sum to
  * totalIncome to the penny. Day 3 introduces strategies that handle residuals correctly.
+ *
+ * <p>Spring-managed and marked {@code @Primary}: this is the strategy Spring injects into
+ * {@link AllocationService} when no {@code @Qualifier} narrows the choice.
  */
+@Component
+@Primary
 public final class DayCountAllocationStrategy implements AllocationStrategy {
 
     @Override

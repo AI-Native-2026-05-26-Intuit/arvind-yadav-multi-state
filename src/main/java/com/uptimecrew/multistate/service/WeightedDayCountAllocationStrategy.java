@@ -4,6 +4,8 @@ import com.uptimecrew.multistate.exception.JurisdictionUnsupportedException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
 
+import org.springframework.stereotype.Component;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
@@ -19,7 +21,13 @@ import java.util.UUID;
  * Splits totalIncome across jurisdictions weighted by business-day count.
  * Weekends are ignored; each business day contributes one unit, scaled by the
  * per-jurisdiction weight (default 1.00). Shares are HALF_UP to scale 2.
+ *
+ * <p>Spring-managed: registered as a secondary {@link AllocationStrategy} bean (no
+ * {@code @Primary}). Spring instantiates it via the no-arg constructor, giving every
+ * jurisdiction the default weight; callers wanting custom weights still build it directly
+ * or via {@link AllocationStrategies}.
  */
+@Component
 public final class WeightedDayCountAllocationStrategy implements AllocationStrategy {
 
     private static final BigDecimal DEFAULT_WEIGHT = new BigDecimal("1.00");
