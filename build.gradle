@@ -28,6 +28,12 @@ dependencies {
     runtimeOnly        'ch.qos.logback:logback-classic:1.5.6'
     testImplementation 'ch.qos.logback:logback-classic:1.5.6'
     testImplementation 'org.assertj:assertj-core:3.25.3'
+
+    // Add to dependencies { ... } in build.gradle, alongside your Day 1 / Week 1 lines.
+    testImplementation platform('org.testcontainers:testcontainers-bom:1.19.7')
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.postgresql:postgresql:42.7.3'
 }
 
 test {
