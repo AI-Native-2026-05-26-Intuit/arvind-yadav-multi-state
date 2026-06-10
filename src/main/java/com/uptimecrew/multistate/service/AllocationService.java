@@ -1,47 +1,70 @@
 package com.uptimecrew.multistate.service;
 
+import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.exception.AllocationException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.repository.TenantRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
 /**
  * Domain service that runs an injected {@link AllocationStrategy} against a worker's
- * inputs. The strategy is provided at construction (never created here), letting callers
- * swap allocation behaviour without changing this service.
+ * inputs and then persists the worker as a {@link Tenant}. Both collaborators are
+ * provided at construction (never created here), letting callers swap allocation
+ * behaviour or the persistence backend without changing this service.
  *
- * <p>Validates inputs at the service boundary, delegates the split to the strategy, and
- * returns the result as an unmodifiable list so downstream code cannot mutate it.
+ * <p>Validates inputs at the service boundary, delegates the split to the strategy,
+ * derives the worker's primary jurisdiction from the result, and saves the resulting
+ * {@link Tenant} inside a single transaction.
  *
  * <p>Spring owns this bean's lifecycle. The single-constructor injection point needs no
- * {@code @Autowired} (Spring 6); Spring supplies the {@code @Primary} {@link AllocationStrategy}.
+ * {@code @Autowired} (Spring 6); Spring supplies the {@code @Primary} {@link AllocationStrategy}
+ * and the {@link TenantRepository}.
  */
 @Service
 public final class AllocationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(AllocationService.class);
 
-    private final AllocationStrategy strategy;
+    /** New tenants start ACTIVE — one of the W2 D1 status CHECK values. */
+    private static final String DEFAULT_STATUS = "ACTIVE";
 
-    public AllocationService(AllocationStrategy strategy) {
+    private final AllocationStrategy strategy;
+    private final TenantRepository repository;          // second constructor arg
+
+    public AllocationService(AllocationStrategy strategy, TenantRepository repository) {
         this.strategy = Objects.requireNonNull(strategy, "strategy");
+        this.repository = Objects.requireNonNull(repository, "repository");
     }
 
-    public List<IncomeAllocation> allocate(
+    /**
+     * Runs the strategy and persists the worker as a {@link Tenant}, returning the saved
+     * entity. The strategy call and the {@code repository.save(...)} run in one transaction.
+     *
+     * @param legalName the tenant's legal name (required by the {@code tenant} table)
+     * @return the persisted {@link Tenant}
+     */
+    @Transactional                                      // one tx wraps strategy + save
+    public Tenant allocate(
         String workerId,
+        String legalName,
         BigDecimal totalIncome,
         List<WorkDay> workDays,
         LocalDate allocatedFor
     ) {
         Objects.requireNonNull(workerId, "workerId");
+        Objects.requireNonNull(legalName, "legalName");
         Objects.requireNonNull(totalIncome, "totalIncome");
         Objects.requireNonNull(workDays, "workDays");
         Objects.requireNonNull(allocatedFor, "allocatedFor");
@@ -51,16 +74,36 @@ public final class AllocationService {
 
         LOG.info("invoking strategy={} for workerId={} totalIncome={} workDays={} allocatedFor={}",
             strategy.getClass().getSimpleName(), workerId, totalIncome, workDays.size(), allocatedFor);
+
+        final List<IncomeAllocation> allocations;
         try {
-            List<IncomeAllocation> result =
-                strategy.allocate(workerId, totalIncome, workDays, allocatedFor);
-            List<IncomeAllocation> immutable = List.copyOf(result);
-            LOG.info("strategy={} returned allocations={} for workerId={}",
-                strategy.getClass().getSimpleName(), immutable.size(), workerId);
-            return immutable;
+            allocations = List.copyOf(strategy.allocate(workerId, totalIncome, workDays, allocatedFor));
         } catch (AllocationException ex) {
             LOG.warn("strategy failed: {}", ex.getMessage(), ex);
             throw ex;
         }
+
+        // The worker's primary jurisdiction is the one that received the largest share
+        // of income in this run — derived directly from the strategy result.
+        String primaryJurisdictionCode = allocations.stream()
+            .max(Comparator.comparing(IncomeAllocation::amount))
+            .map(IncomeAllocation::jurisdictionCode)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "cannot determine primary jurisdiction: strategy produced no allocations"));
+
+        Instant now = Instant.now();
+        Tenant entity = new Tenant(
+            workerId,                   // TEXT id == the worker/tenant id
+            legalName,
+            primaryJurisdictionCode,
+            DEFAULT_STATUS,
+            allocatedFor,               // incorporated_on
+            now,                        // created_at
+            now                         // updated_at (== created_at satisfies the DDL CHECK)
+        );
+        Tenant saved = repository.save(entity);
+        LOG.info("persisted tenant id={} primaryJurisdictionCode={} from allocations={}",
+            saved.getId(), saved.getPrimaryJurisdictionCode(), allocations.size());
+        return saved;
     }
 }

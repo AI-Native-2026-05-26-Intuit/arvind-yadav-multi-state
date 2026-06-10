@@ -2,7 +2,7 @@ package com.uptimecrew.multistate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.uptimecrew.multistate.model.IncomeAllocation;
+import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.model.WorkDay;
 import com.uptimecrew.multistate.service.AllocationService;
 import java.math.BigDecimal;
@@ -33,9 +33,10 @@ class ApplicationContextLoadIT {
     }
 
     @Test
-    void service_delegates_to_primary_strategy() {
+    void service_persists_tenant_with_primary_jurisdiction_from_largest_share() {
         // Arrange: two days in CA, one in NY — the @Primary day-count strategy
-        // should split $900 as 2/3 to CA ($600) and 1/3 to NY ($300).
+        // gives CA the larger share ($600 vs $300), so CA becomes the primary
+        // jurisdiction on the persisted Tenant.
         String workerId = "emp_001";
         LocalDate allocatedFor = LocalDate.of(2026, 6, 9);
         List<WorkDay> workDays = List.of(
@@ -44,17 +45,13 @@ class ApplicationContextLoadIT {
             new WorkDay("wd_3", workerId, "NY", LocalDate.of(2026, 6, 3))
         );
 
-        List<IncomeAllocation> result =
-            service.allocate(workerId, new BigDecimal("900.00"), workDays, allocatedFor);
+        Tenant saved =
+            service.allocate(workerId, "Acme LLC", new BigDecimal("900.00"), workDays, allocatedFor);
 
-        assertThat(result)
-            .as("day-count strategy produces one allocation per jurisdiction touched")
-            .hasSize(2)
-            .extracting(IncomeAllocation::jurisdictionCode)
-            .containsExactlyInAnyOrder("CA", "NY");
-        assertThat(result)
-            .as("amounts sum to the total income with no residual lost")
-            .extracting(IncomeAllocation::amount)
-            .containsExactlyInAnyOrder(new BigDecimal("600.00"), new BigDecimal("300.00"));
+        assertThat(saved.getId()).isEqualTo(workerId);
+        assertThat(saved.getPrimaryJurisdictionCode())
+            .as("CA received the larger share, so it is the primary jurisdiction")
+            .isEqualTo("CA");
+        assertThat(saved.getIncorporatedOn()).isEqualTo(allocatedFor);
     }
 }

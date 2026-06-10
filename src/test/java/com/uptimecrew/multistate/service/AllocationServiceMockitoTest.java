@@ -4,9 +4,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.IncomeAllocationTestDataBuilder;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.repository.TenantRepository;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,9 +24,10 @@ import static org.mockito.Mockito.when;
 class AllocationServiceMockitoTest {
 
     @Mock AllocationStrategy strategy;
+    @Mock TenantRepository repository;
 
     @Test
-    void delegates_to_injected_strategy_on_allocate() {
+    void delegates_to_strategy_then_persists_tenant() {
         String workerId = "emp_42";
         BigDecimal totalIncome = new BigDecimal("12500.00");
         List<WorkDay> workDays = List.of(
@@ -42,12 +45,15 @@ class AllocationServiceMockitoTest {
                 .build());
 
         when(strategy.allocate(any(), any(), any(), any())).thenReturn(stubbedReturn);
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        AllocationService subject = new AllocationService(strategy);
-        List<IncomeAllocation> result =
-            subject.allocate(workerId, totalIncome, workDays, allocatedFor);
+        AllocationService subject = new AllocationService(strategy, repository);
+        Tenant saved = subject.allocate(workerId, "Acme LLC", totalIncome, workDays, allocatedFor);
 
         verify(strategy).allocate(workerId, totalIncome, workDays, allocatedFor);
-        assertEquals(stubbedReturn, result);
+        verify(repository).save(saved);
+        assertEquals("emp_42", saved.getId());
+        assertEquals("Acme LLC", saved.getLegalName());
+        assertEquals("CA", saved.getPrimaryJurisdictionCode());   // derived from the stubbed allocation
     }
 }
