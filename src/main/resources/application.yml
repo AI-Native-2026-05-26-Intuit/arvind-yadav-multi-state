@@ -3,6 +3,8 @@ spring:
     name: multistate-service
   profiles:
     default: local
+  autoconfigure:
+    exclude: org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
   datasource:
     url: jdbc:postgresql://localhost:5432/postgres
     username: postgres

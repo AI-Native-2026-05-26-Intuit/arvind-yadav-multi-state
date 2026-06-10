@@ -1,8 +1,8 @@
 plugins {
     id 'java'
     id 'jacoco'  
-    id 'org.springframework.boot'      version '3.3.2'
-    id 'io.spring.dependency-management' version '1.1.5'
+    id 'org.springframework.boot'      version '4.0.6'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group   = 'com.uptimecrew.multistate'
@@ -34,9 +34,9 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.10.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.10.0'
 
-    implementation     'org.slf4j:slf4j-api:2.0.12'
-    runtimeOnly        'ch.qos.logback:logback-classic:1.5.6'
-    testImplementation 'ch.qos.logback:logback-classic:1.5.6'
+    implementation     'org.slf4j:slf4j-api'                // version managed by the Spring Boot BOM
+    runtimeOnly        'ch.qos.logback:logback-classic'     // version managed by the Spring Boot BOM
+    testImplementation 'ch.qos.logback:logback-classic'
     testImplementation 'org.assertj:assertj-core:3.25.3'
 
     // Add to dependencies { ... } in build.gradle, alongside your Day 1 / Week 1 lines.
