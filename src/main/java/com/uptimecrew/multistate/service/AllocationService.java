@@ -6,6 +6,7 @@ import com.uptimecrew.multistate.model.WorkDay;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,7 +20,11 @@ import java.util.Objects;
  *
  * <p>Validates inputs at the service boundary, delegates the split to the strategy, and
  * returns the result as an unmodifiable list so downstream code cannot mutate it.
+ *
+ * <p>Spring owns this bean's lifecycle. The single-constructor injection point needs no
+ * {@code @Autowired} (Spring 6); Spring supplies the {@code @Primary} {@link AllocationStrategy}.
  */
+@Service
 public final class AllocationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(AllocationService.class);

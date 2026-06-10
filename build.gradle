@@ -1,6 +1,8 @@
 plugins {
     id 'java'
     id 'jacoco'  
+    id 'org.springframework.boot'      version '3.3.2'
+    id 'io.spring.dependency-management' version '1.1.5'
 }
 
 group   = 'com.uptimecrew.multistate'
@@ -17,6 +19,14 @@ repositories {
 }
 
 dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-web'      // brings the embedded Tomcat for Actuator
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    runtimeOnly    'org.springframework.boot:spring-boot-starter-jdbc'     // wires HikariCP + DataSource
+    runtimeOnly    'org.postgresql:postgresql:42.7.3'                      // from W2 D2
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly    'org.junit.platform:junit-platform-launcher'
@@ -42,6 +52,20 @@ test {
     testLogging {
         events 'passed', 'skipped', 'failed'
         showStandardStreams = true
+    }
+
+    // Rancher Desktop (moby engine) exposes its docker socket at ~/.rd/docker.sock
+    // instead of /var/run/docker.sock. Testcontainers' built-in discovery doesn't
+    // find it, and docker-java negotiates API 1.32 by default — too old for
+    // Rancher's daemon (min 1.41). Wire both onto the forked test-worker JVM.
+    // Guarded so machines on Docker Desktop / standard socket get auto-discovery.
+    def rancherSock = "${System.getProperty('user.home')}/.rd/docker.sock"
+    if (file(rancherSock).exists()) {
+        environment 'DOCKER_HOST', "unix://${rancherSock}"
+        systemProperty 'docker.host', "unix://${rancherSock}"
+        systemProperty 'api.version', '1.41'
+        environment 'TESTCONTAINERS_CHECKS_DISABLE', 'true'
+        environment 'TESTCONTAINERS_RYUK_DISABLED', 'true'
     }
 }
 
