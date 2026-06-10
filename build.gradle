@@ -25,6 +25,9 @@ dependencies {
     runtimeOnly    'org.springframework.boot:spring-boot-starter-jdbc'     // wires HikariCP + DataSource
     runtimeOnly    'org.postgresql:postgresql:42.7.3'                      // from W2 D2
 
+    // ── NEW for W2 D4: Spring Data JPA ─────────────────────────────────
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     
     testImplementation platform('org.junit:junit-bom:5.10.2')
