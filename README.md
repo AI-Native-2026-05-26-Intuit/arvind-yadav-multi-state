@@ -4,6 +4,8 @@ A Java domain library for splitting a worker's income across the tax jurisdictio
 
 The domain core is now packaged as a **Spring Boot 3.3** application: the service and its allocation strategies are Spring-managed beans, and the build produces a runnable boot jar with Actuator health/info endpoints. The pure-Java domain types and standards (see [CLAUDE.md](CLAUDE.md)) are unchanged — Spring sits around them, not inside them.
 
+**Week 2 Day 4:** mapped the three W2 D1 tables to JPA entities (`Tenant`, `Allocation`, `Jurisdiction`) with a LAZY `Tenant`↔`Allocation` relationship, added three Spring Data `JpaRepository` interfaces (derived + `@Query` JPQL methods), wired `TenantRepository` into `AllocationService` under `@Transactional`, and added a Testcontainers-backed `@DataJpaTest` slice ([TenantRepositoryIT](src/test/java/com/uptimecrew/multistate/repository/TenantRepositoryIT.java)).
+
 ## Build & test
 
 ```bash
