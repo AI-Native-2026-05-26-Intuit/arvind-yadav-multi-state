@@ -33,7 +33,9 @@ import java.util.Objects;
  * and the {@link TenantRepository}.
  */
 @Service
-public final class AllocationService {
+// Not final: @Transactional means Spring wraps this bean in a CGLIB proxy, which
+// must subclass it. This is the justified exception to "classes default to final".
+public class AllocationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(AllocationService.class);
 
