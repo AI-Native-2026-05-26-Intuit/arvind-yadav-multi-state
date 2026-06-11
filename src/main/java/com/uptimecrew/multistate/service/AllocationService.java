@@ -4,6 +4,8 @@ import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.exception.AllocationException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.readmodel.TenantReadModel;
+import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import com.uptimecrew.multistate.repository.TenantRepository;
 
 import org.slf4j.Logger;
@@ -22,15 +24,17 @@ import java.util.Objects;
  * Domain service that runs an injected {@link AllocationStrategy} against a worker's
  * inputs and then persists the worker as a {@link Tenant}. Both collaborators are
  * provided at construction (never created here), letting callers swap allocation
- * behaviour or the persistence backend without changing this service.
+ * behaviour or either persistence backend without changing this service.
  *
  * <p>Validates inputs at the service boundary, delegates the split to the strategy,
- * derives the worker's primary jurisdiction from the result, and saves the resulting
- * {@link Tenant} inside a single transaction.
+ * derives the worker's primary jurisdiction from the result, saves the resulting
+ * {@link Tenant} via JPA, and write-throughs a {@link TenantReadModel} projection to
+ * Mongo — all inside a single transaction.
  *
- * <p>Spring owns this bean's lifecycle. The single-constructor injection point needs no
- * {@code @Autowired} (Spring 6); Spring supplies the {@code @Primary} {@link AllocationStrategy}
- * and the {@link TenantRepository}.
+ * <p>Spring owns this bean's lifecycle and injects all three collaborators through the
+ * single constructor (no field/annotation injection): the {@code @Primary}
+ * {@link AllocationStrategy}, the {@link TenantRepository}, and the
+ * {@link TenantReadModelRepository}.
  */
 @Service
 // Not final: @Transactional means Spring wraps this bean in a CGLIB proxy, which
@@ -43,11 +47,15 @@ public class AllocationService {
     private static final String DEFAULT_STATUS = "ACTIVE";
 
     private final AllocationStrategy strategy;
-    private final TenantRepository repository;          // second constructor arg
+    private final TenantRepository repository;                   // second constructor arg
+    private final TenantReadModelRepository readModelRepository; // third arg — Mongo write-through target
 
-    public AllocationService(AllocationStrategy strategy, TenantRepository repository) {
+    public AllocationService(AllocationStrategy strategy,
+                             TenantRepository repository,
+                             TenantReadModelRepository readModelRepository) {
         this.strategy = Objects.requireNonNull(strategy, "strategy");
         this.repository = Objects.requireNonNull(repository, "repository");
+        this.readModelRepository = Objects.requireNonNull(readModelRepository, "readModelRepository");
     }
 
     /**
@@ -106,6 +114,31 @@ public class AllocationService {
         Tenant saved = repository.save(entity);
         LOG.info("persisted tenant id={} primaryJurisdictionCode={} from allocations={}",
             saved.getId(), saved.getPrimaryJurisdictionCode(), allocations.size());
+
+        // Write-through: project the saved JPA aggregate into the Mongo read model so the
+        // query side returns the whole tenant+allocations tree in a single round-trip,
+        // inside the same @Transactional boundary as the JPA save above.
+        List<TenantReadModel.EmbeddedAllocation> embedded = allocations.stream()
+            .map(a -> new TenantReadModel.EmbeddedAllocation(
+                a.id(),
+                a.jurisdictionCode(),
+                a.allocatedFor().getYear(),         // tax year derived from the allocation period
+                a.allocatedFor(),
+                a.amount(),
+                strategy.getClass().getSimpleName(),
+                now))
+            .toList();
+        TenantReadModel projection = new TenantReadModel(
+            saved.getId(),
+            saved.getPrimaryJurisdictionCode(),     // primaryState
+            saved.getLegalName(),
+            saved.getStatus(),
+            now,                                    // capturedAt — same "now" as the JPA timestamps
+            embedded);
+        readModelRepository.save(projection);
+        LOG.info("write-through to mongo id={} primaryState={} allocations={}",
+            saved.getId(), saved.getPrimaryJurisdictionCode(), embedded.size());
+
         return saved;
     }
 }
