@@ -49,7 +49,7 @@ public class AllocationService {
     private static final String DEFAULT_STATUS = "ACTIVE";
 
     /** Cache region for {@link #findById(String)} — Redis-backed in the running app. */
-    static final String CACHE_NAME = "multistate.byId";
+    public static final String CACHE_NAME = "multistate.byId";
 
     private final AllocationStrategy strategy;
     private final TenantRepository repository;                   // second constructor arg
