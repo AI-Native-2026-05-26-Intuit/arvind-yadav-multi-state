@@ -10,6 +10,7 @@ import com.uptimecrew.multistate.repository.TenantRepository;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Domain service that runs an injected {@link AllocationStrategy} against a worker's
@@ -45,6 +47,9 @@ public class AllocationService {
 
     /** New tenants start ACTIVE — one of the W2 D1 status CHECK values. */
     private static final String DEFAULT_STATUS = "ACTIVE";
+
+    /** Cache region for {@link #findById(String)} — Redis-backed in the running app. */
+    static final String CACHE_NAME = "multistate.byId";
 
     private final AllocationStrategy strategy;
     private final TenantRepository repository;                   // second constructor arg
@@ -140,5 +145,40 @@ public class AllocationService {
             saved.getId(), saved.getPrimaryJurisdictionCode(), embedded.size());
 
         return saved;
+    }
+
+    /**
+     * Reads a tenant projection by id along the cache-aside path: Redis (via
+     * {@link Cacheable}) → Mongo read model → Postgres fallback.
+     *
+     * <p>{@code unless = "#result == null"} keeps a miss out of the cache: for an
+     * {@code Optional} return type Spring caches the <em>unwrapped</em> value, so an
+     * empty result evaluates {@code #result} to {@code null} and is not stored — a
+     * transient "not found" never gets locked in.
+     *
+     * <p>The INFO log fires only on a real method invocation (a cache miss); once the
+     * value is cached, {@code @Cacheable} short-circuits before the body runs and the
+     * read stays silent.
+     */
+    @Cacheable(value = CACHE_NAME, unless = "#result == null")
+    public Optional<TenantReadModel> findById(String id) {
+        Objects.requireNonNull(id, "id");
+        LOG.info("cache miss on id={}; reading from mongo", id);
+
+        Optional<TenantReadModel> fromMongo = readModelRepository.findById(id);
+        if (fromMongo.isPresent()) {
+            return fromMongo;
+        }
+
+        // Fallback: rebuild a projection from the JPA entity so a Mongo wipe doesn't break
+        // the read path. The JPA allocations are LAZY, so this minimal projection carries
+        // the tenant scalars only — not the embedded allocation tree.
+        return repository.findById(id).map(e -> new TenantReadModel(
+            e.getId(),
+            e.getPrimaryJurisdictionCode(),     // primaryState
+            e.getLegalName(),
+            e.getStatus(),
+            Instant.now(),                      // capturedAt — rebuilt now
+            List.of()));
     }
 }
