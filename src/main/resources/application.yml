@@ -14,7 +14,7 @@ spring:
   profiles:
     default: local
   datasource:
-    url: jdbc:postgresql://localhost:5432/postgres
+    url: jdbc:postgresql://localhost:5433/postgres   # local Postgres container; 5432 is taken by an SSH tunnel
     username: postgres
     password: ${DB_PASSWORD:devpass}
     hikari:
