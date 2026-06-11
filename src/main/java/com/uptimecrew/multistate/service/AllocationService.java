@@ -141,8 +141,8 @@ public class AllocationService {
             now,                                    // capturedAt — same "now" as the JPA timestamps
             embedded);
         readModelRepository.save(projection);
-        LOG.info("write-through to mongo id={} primaryState={} allocations={}",
-            saved.getId(), saved.getPrimaryJurisdictionCode(), embedded.size());
+        LOG.info("write-through to mongo id={} status={} primaryState={} allocations={}",
+            saved.getId(), saved.getStatus(), saved.getPrimaryJurisdictionCode(), embedded.size());
 
         return saved;
     }
