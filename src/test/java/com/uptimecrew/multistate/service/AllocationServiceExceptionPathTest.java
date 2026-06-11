@@ -17,6 +17,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.uptimecrew.multistate.exception.IncomeAllocationFailedException;
 import com.uptimecrew.multistate.exception.JurisdictionUnsupportedException;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.repository.TenantRepository;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +31,7 @@ import org.slf4j.LoggerFactory;
 class AllocationServiceExceptionPathTest {
 
     private static final String WORKER_ID = "emp_42";
+    private static final String LEGAL_NAME = "Acme LLC";
     private static final BigDecimal TOTAL_INCOME = new BigDecimal("12500.00");
     private static final LocalDate PERIOD = LocalDate.of(2026, 3, 31);
     private static final List<WorkDay> WORK_DAYS = List.of(
@@ -37,6 +39,7 @@ class AllocationServiceExceptionPathTest {
     );
 
     @Mock AllocationStrategy strategy;
+    @Mock TenantRepository repository;
 
     private Logger logbackLogger;
     private ListAppender<ILoggingEvent> appender;
@@ -59,10 +62,10 @@ class AllocationServiceExceptionPathTest {
         when(strategy.allocate(any(), any(), any(), any()))
             .thenThrow(new JurisdictionUnsupportedException("jurisdiction not supported: ZZ"));
 
-        AllocationService subject = new AllocationService(strategy);
+        AllocationService subject = new AllocationService(strategy, repository);
 
         assertThatThrownBy(() ->
-            subject.allocate(WORKER_ID, TOTAL_INCOME, WORK_DAYS, PERIOD))
+            subject.allocate(WORKER_ID, LEGAL_NAME, TOTAL_INCOME, WORK_DAYS, PERIOD))
             .isInstanceOf(JurisdictionUnsupportedException.class)
             .hasMessageContaining("jurisdiction not supported: ZZ");
     }
@@ -74,10 +77,10 @@ class AllocationServiceExceptionPathTest {
             .thenThrow(new IncomeAllocationFailedException(
                 "failed reading day-count source for tenant-a", underlying));
 
-        AllocationService subject = new AllocationService(strategy);
+        AllocationService subject = new AllocationService(strategy, repository);
 
         assertThatThrownBy(() ->
-            subject.allocate(WORKER_ID, TOTAL_INCOME, WORK_DAYS, PERIOD))
+            subject.allocate(WORKER_ID, LEGAL_NAME, TOTAL_INCOME, WORK_DAYS, PERIOD))
             .isInstanceOf(IncomeAllocationFailedException.class)
             .hasMessageContaining("failed reading day-count source for tenant-a")
             .hasRootCauseInstanceOf(IOException.class)
@@ -89,10 +92,10 @@ class AllocationServiceExceptionPathTest {
         when(strategy.allocate(any(), any(), any(), any()))
             .thenThrow(new JurisdictionUnsupportedException("jurisdiction not supported: ZZ"));
 
-        AllocationService subject = new AllocationService(strategy);
+        AllocationService subject = new AllocationService(strategy, repository);
 
         assertThatThrownBy(() ->
-            subject.allocate(WORKER_ID, TOTAL_INCOME, WORK_DAYS, PERIOD))
+            subject.allocate(WORKER_ID, LEGAL_NAME, TOTAL_INCOME, WORK_DAYS, PERIOD))
             .isInstanceOf(JurisdictionUnsupportedException.class);
 
         assertThat(appender.list)

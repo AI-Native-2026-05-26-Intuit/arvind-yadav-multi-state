@@ -1,8 +1,20 @@
 spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate            # (1) NEVER 'update' or 'create' in this curriculum
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+    open-in-view: false             # (2) prevent the lazy-load-in-view anti-pattern
+    show-sql: false                 # flip to true for local debugging only
   application:
     name: multistate-service
   profiles:
     default: local
+  autoconfigure:
+    exclude: org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
   datasource:
     url: jdbc:postgresql://localhost:5432/postgres
     username: postgres
