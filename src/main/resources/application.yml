@@ -54,6 +54,7 @@ logging:
   level:
     root: INFO
     com.uptimecrew.multistate: DEBUG     # turn up your own packages in local dev
+    org.springframework.security: DEBUG  # logs the SecurityFilterChain being built at startup
 
 ---
 spring:
