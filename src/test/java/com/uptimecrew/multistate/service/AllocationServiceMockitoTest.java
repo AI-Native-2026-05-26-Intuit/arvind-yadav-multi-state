@@ -8,6 +8,7 @@ import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.IncomeAllocationTestDataBuilder;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import com.uptimecrew.multistate.repository.TenantRepository;
 
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ class AllocationServiceMockitoTest {
 
     @Mock AllocationStrategy strategy;
     @Mock TenantRepository repository;
+    @Mock TenantReadModelRepository readModelRepository;
 
     @Test
     void delegates_to_strategy_then_persists_tenant() {
@@ -47,11 +49,12 @@ class AllocationServiceMockitoTest {
         when(strategy.allocate(any(), any(), any(), any())).thenReturn(stubbedReturn);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        AllocationService subject = new AllocationService(strategy, repository);
+        AllocationService subject = new AllocationService(strategy, repository, readModelRepository);
         Tenant saved = subject.allocate(workerId, "Acme LLC", totalIncome, workDays, allocatedFor);
 
         verify(strategy).allocate(workerId, totalIncome, workDays, allocatedFor);
         verify(repository).save(saved);
+        verify(readModelRepository).save(any());   // write-through to the Mongo read model
         assertEquals("emp_42", saved.getId());
         assertEquals("Acme LLC", saved.getLegalName());
         assertEquals("CA", saved.getPrimaryJurisdictionCode());   // derived from the stubbed allocation

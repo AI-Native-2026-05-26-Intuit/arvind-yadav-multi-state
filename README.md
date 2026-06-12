@@ -6,6 +6,8 @@ The domain core is now packaged as a **Spring Boot 3.3** application: the servic
 
 **Week 2 Day 4:** mapped the three W2 D1 tables to JPA entities (`Tenant`, `Allocation`, `Jurisdiction`) with a LAZY `Tenant`↔`Allocation` relationship, added three Spring Data `JpaRepository` interfaces (derived + `@Query` JPQL methods), wired `TenantRepository` into `AllocationService` under `@Transactional`, and added a Testcontainers-backed `@DataJpaTest` slice ([TenantRepositoryIT](src/test/java/com/uptimecrew/multistate/repository/TenantRepositoryIT.java)).
 
+**Week 2 Day 5:** added a polyglot read side — a Mongo `@Document` read model ([TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java)) with embedded allocations and its `MongoRepository`, write-through from `AllocationService` to Mongo inside the existing JPA transaction, and a Redis-backed `@Cacheable` `findById` read path (`@EnableCaching`), all verified end-to-end against Postgres + Mongo + Redis containers in [TenantPolyglotIT](src/test/java/com/uptimecrew/multistate/TenantPolyglotIT.java).
+
 ## Build & test
 
 ```bash
@@ -26,7 +28,7 @@ JaCoCo is wired into the build. After any test run, the HTML report lives at `bu
 
 The project is bootstrapped as a Spring Boot 3.3 application (Boot + dependency-management Gradle plugins).
 
-- [Application](src/main/java/com/uptimecrew/multistate/Application.java) — the `@SpringBootApplication` entry point. Component-scans everything under `com.uptimecrew.multistate.*`. `DataSourceAutoConfiguration` is **excluded** so the context boots without a live database; a `DataSource` is wired by `spring-boot-starter-jdbc` (HikariCP) only when a real datasource is in play.
+- [Application](src/main/java/com/uptimecrew/multistate/Application.java) — the `@SpringBootApplication` (also `@EnableCaching`) entry point. Component-scans everything under `com.uptimecrew.multistate.*`. The Hikari `DataSource` is auto-configured from `spring.datasource.*` (via `spring-boot-starter-jdbc` + the PostgreSQL driver), which lets Spring Data JPA stand up the `EntityManagerFactory` and repositories the service depends on.
 - **Beans.** [AllocationService](src/main/java/com/uptimecrew/multistate/service/AllocationService.java) is a `@Service`; the strategies are `@Component`s. [DayCountAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/DayCountAllocationStrategy.java) is marked `@Primary`, so it is the `AllocationStrategy` Spring injects into the service unless a `@Qualifier` narrows the choice. [WeightedDayCountAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/WeightedDayCountAllocationStrategy.java) is registered as a secondary bean (no `@Primary`), instantiated via its no-arg constructor with the default per-jurisdiction weight. Constructor injection on the single-constructor service needs no `@Autowired` (Spring 6).
 - **Factory still matters.** [AllocationStrategies](src/main/java/com/uptimecrew/multistate/service/AllocationStrategies.java) is retained after the migration. Spring is the factory for the default injected strategy, but the façade still serves callers *outside* the Spring context — unit tests that don't boot Spring, and the parameterized variants (`byIncomeProportion(...)` needs a revenue map, `byHybridBlend(...)` needs two delegates and a weight) that component scanning cannot construct on its own.
 

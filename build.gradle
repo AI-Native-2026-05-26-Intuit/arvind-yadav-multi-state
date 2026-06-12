@@ -50,6 +50,15 @@ dependencies {
     testImplementation 'org.testcontainers:postgresql'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.postgresql:postgresql:42.7.3'
+
+    // Add to dependencies { ... } in build.gradle, alongside your W2 D4 lines.
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+    testImplementation 'org.testcontainers:mongodb'      // joins the BOM you added on W2 D2
+    // Redis: use the core GenericContainer with the redis:7-alpine image — no extra
+    // module needed for simple use.
 }
 
 test {

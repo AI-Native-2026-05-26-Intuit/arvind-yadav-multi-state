@@ -17,6 +17,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.uptimecrew.multistate.exception.IncomeAllocationFailedException;
 import com.uptimecrew.multistate.exception.JurisdictionUnsupportedException;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import com.uptimecrew.multistate.repository.TenantRepository;
 
 import org.junit.jupiter.api.AfterEach;
@@ -40,6 +41,7 @@ class AllocationServiceExceptionPathTest {
 
     @Mock AllocationStrategy strategy;
     @Mock TenantRepository repository;
+    @Mock TenantReadModelRepository readModelRepository;
 
     private Logger logbackLogger;
     private ListAppender<ILoggingEvent> appender;
@@ -62,7 +64,7 @@ class AllocationServiceExceptionPathTest {
         when(strategy.allocate(any(), any(), any(), any()))
             .thenThrow(new JurisdictionUnsupportedException("jurisdiction not supported: ZZ"));
 
-        AllocationService subject = new AllocationService(strategy, repository);
+        AllocationService subject = new AllocationService(strategy, repository, readModelRepository);
 
         assertThatThrownBy(() ->
             subject.allocate(WORKER_ID, LEGAL_NAME, TOTAL_INCOME, WORK_DAYS, PERIOD))
@@ -77,7 +79,7 @@ class AllocationServiceExceptionPathTest {
             .thenThrow(new IncomeAllocationFailedException(
                 "failed reading day-count source for tenant-a", underlying));
 
-        AllocationService subject = new AllocationService(strategy, repository);
+        AllocationService subject = new AllocationService(strategy, repository, readModelRepository);
 
         assertThatThrownBy(() ->
             subject.allocate(WORKER_ID, LEGAL_NAME, TOTAL_INCOME, WORK_DAYS, PERIOD))
@@ -92,7 +94,7 @@ class AllocationServiceExceptionPathTest {
         when(strategy.allocate(any(), any(), any(), any()))
             .thenThrow(new JurisdictionUnsupportedException("jurisdiction not supported: ZZ"));
 
-        AllocationService subject = new AllocationService(strategy, repository);
+        AllocationService subject = new AllocationService(strategy, repository, readModelRepository);
 
         assertThatThrownBy(() ->
             subject.allocate(WORKER_ID, LEGAL_NAME, TOTAL_INCOME, WORK_DAYS, PERIOD))

@@ -17,7 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -40,6 +44,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 // the JPA slice needs it, so clear the exclusion for this test.
 @TestPropertySource(properties = "spring.autoconfigure.exclude=")
 class TenantRepositoryIT {
+
+    // Application carries @EnableCaching, but the JPA slice doesn't load the Redis cache
+    // auto-config that supplies a CacheManager in the running app. Provide a no-op
+    // in-memory one so the slice context starts; this test exercises JPA, not caching.
+    @TestConfiguration
+    static class CachingTestConfig {
+        @Bean
+        CacheManager cacheManager() {
+            return new ConcurrentMapCacheManager();
+        }
+    }
 
     // Wait on the listening port (not TC's default log wait): on Rancher Desktop the log
     // message can fire before the mapped port is published, refusing the first connect.

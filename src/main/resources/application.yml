@@ -13,14 +13,25 @@ spring:
     name: multistate-service
   profiles:
     default: local
-  autoconfigure:
-    exclude: org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
   datasource:
-    url: jdbc:postgresql://localhost:5432/postgres
+    url: jdbc:postgresql://localhost:5433/postgres   # local Postgres container; 5432 is taken by an SSH tunnel
     username: postgres
     password: ${DB_PASSWORD:devpass}
     hikari:
       maximum-pool-size: 5
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/multistate      # (1) placeholder; tests inject via @ServiceConnection
+      auto-index-creation: true                      # (2) create @Indexed indexes on startup
+    redis:
+      host: localhost
+      port: 6379
+  cache:
+    type: redis
+    redis:
+      time-to-live: 60000                             # (3) 60s TTL — short enough to bound staleness
+      cache-null-values: false                        # (4) don't cache "not found"
+
 
 management:
   endpoints:
