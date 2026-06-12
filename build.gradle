@@ -31,6 +31,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     // Spring Boot 4 splits test slices into per-technology modules.
     testImplementation 'org.springframework.boot:spring-boot-data-jpa-test'   // @DataJpaTest
+    testImplementation 'org.springframework.boot:spring-boot-webmvc-test'     // @AutoConfigureMockMvc
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'  // @ServiceConnection
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
