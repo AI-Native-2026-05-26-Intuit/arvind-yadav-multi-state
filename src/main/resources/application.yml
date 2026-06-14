@@ -31,6 +31,14 @@ spring:
     redis:
       time-to-live: 60000                             # (3) 60s TTL — short enough to bound staleness
       cache-null-values: false                        # (4) don't cache "not found"
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # (1) Dummy IdP issuer for production wiring; tests override with a mock
+          #     JwkSource via spring-security-test so they don't need a real IdP.
+          issuer-uri: https://idp.example.internal/realms/uptimecrew
+
 
 
 management:
@@ -46,6 +54,7 @@ logging:
   level:
     root: INFO
     com.uptimecrew.multistate: DEBUG     # turn up your own packages in local dev
+    org.springframework.security: DEBUG  # logs the SecurityFilterChain being built at startup
 
 ---
 spring:

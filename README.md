@@ -8,6 +8,8 @@ The domain core is now packaged as a **Spring Boot 3.3** application: the servic
 
 **Week 2 Day 5:** added a polyglot read side — a Mongo `@Document` read model ([TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java)) with embedded allocations and its `MongoRepository`, write-through from `AllocationService` to Mongo inside the existing JPA transaction, and a Redis-backed `@Cacheable` `findById` read path (`@EnableCaching`), all verified end-to-end against Postgres + Mongo + Redis containers in [TenantPolyglotIT](src/test/java/com/uptimecrew/multistate/TenantPolyglotIT.java).
 
+**Week 3 Day 1:** put the read side behind a secured HTTP API. Added an OAuth2 resource-server [SecurityConfig](src/main/java/com/uptimecrew/multistate/security/SecurityConfig.java) (stateless, JWT-validated, default-deny under `/api/**`, `/actuator/health` public) with a `JwtAuthenticationConverter` that maps the `scope` claim to `SCOPE_*` authorities and a custom `roles` claim to `ROLE_*` authorities, enabling `@PreAuthorize` SpEL on the controller. [TenantController](src/main/java/com/uptimecrew/multistate/api/TenantController.java) exposes `GET /api/tenants/{id}` and `GET /api/tenants/{id}/summary`, both gated on `SCOPE_tenants.read` **and** `ROLE_TENANT_READER`. A per-subject Bucket4j [RateLimitFilter](src/main/java/com/uptimecrew/multistate/security/RateLimitFilter.java) (10 requests / minute, in-memory `ConcurrentHashMap` keyed by JWT subject, scoped to `/api/**/summary`) is registered *after* `BearerTokenAuthenticationFilter` so the JWT principal is resolved before the bucket lookup; over-limit responses return `429` with `Retry-After: 60`. End-to-end coverage in [TenantSecurityIT](src/test/java/com/uptimecrew/multistate/TenantSecurityIT.java) asserts 200/401/403 on the read endpoint and 429-after-10 on the summary endpoint, against real Postgres + Mongo + Redis containers.
+
 ## Build & test
 
 ```bash
@@ -44,6 +46,18 @@ The project is bootstrapped as a Spring Boot 3.3 application (Boot + dependency-
 ### Actuator
 
 `spring-boot-starter-actuator` exposes management endpoints over HTTP (embedded Tomcat via `spring-boot-starter-web`). The `local` profile exposes `health` and `info`; the `test` profile exposes only `health`. Health detail is shown `when-authorized`.
+
+## HTTP API
+
+All `/api/**` routes require a valid Bearer JWT and authority `SCOPE_tenants.read` + role `TENANT_READER`. `/actuator/health` is unauthenticated. The session is stateless; CSRF is disabled because there is no cookie-based auth surface.
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/api/tenants/{id}` | JWT + `SCOPE_tenants.read` + `ROLE_TENANT_READER` | Returns the [TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java) from the Redis-cached Mongo read side. 404 if not found. |
+| `GET` | `/api/tenants/{id}/summary` | Same as above | Stubbed LLM-style summary. Rate-limited to **10 requests / minute per JWT subject**; over-limit returns `429` with `Retry-After: 60`. |
+| `GET` | `/actuator/health` | none | Liveness probe. |
+
+Anonymous → `401`. Authenticated but missing scope/role → `403`. The rate-limit filter is in-memory per process; in a horizontally scaled deployment swap in `bucket4j-redis` so the bucket is shared.
 
 ## Domain model
 
@@ -106,6 +120,7 @@ Integration tests (`*IT` suffix) boot a real context or container:
 
 - [ApplicationContextLoadIT](src/test/java/com/uptimecrew/multistate/ApplicationContextLoadIT.java) — `@SpringBootTest` under the `test` profile. Asserts the context loads and the `AllocationService` bean is wired, then exercises it end-to-end through the injected `@Primary` (day-count) strategy.
 - [TenantQueryIT](src/test/java/com/uptimecrew/multistate/repository/TenantQueryIT.java) — Testcontainers-backed Postgres query test. Waits on the listening port (not the default log wait) and a 120s startup timeout to stay reliable on Rancher Desktop's moby engine.
+- [TenantSecurityIT](src/test/java/com/uptimecrew/multistate/TenantSecurityIT.java) — `@SpringBootTest` + `@AutoConfigureMockMvc` with real Postgres, Mongo and Redis via Testcontainers `@ServiceConnection`. Uses Spring Security's `jwt()` request post-processor to mint test JWTs and asserts the full authentication / authorization / rate-limit contract: `200` with the right scope+role, `401` anonymous, `403` when the role is missing, and `429` + `Retry-After: 60` after 10 `/summary` calls for one subject.
 
 ## Dependencies
 
@@ -113,7 +128,9 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 
 | Scope | Library |
 | --- | --- |
-| `implementation` | `org.springframework.boot:spring-boot-starter`, `spring-boot-starter-web` (embedded Tomcat for Actuator), `spring-boot-starter-actuator` |
+| `implementation` | `org.springframework.boot:spring-boot-starter`, `spring-boot-starter-web` (embedded Tomcat for Actuator), `spring-boot-starter-actuator`, `spring-boot-starter-security`, `spring-boot-starter-oauth2-resource-server` |
+| `implementation` | `com.bucket4j:bucket4j-core` (per-subject token-bucket rate limiting) |
+| `testImplementation` | `org.springframework.security:spring-security-test` (MockMvc `jwt()` post-processor) |
 | `runtimeOnly` | `org.springframework.boot:spring-boot-starter-jdbc` (HikariCP + `DataSource`), `org.postgresql:postgresql:42.7.3` |
 | `implementation` | `org.slf4j:slf4j-api:2.0.12` |
 | `runtimeOnly` | `ch.qos.logback:logback-classic:1.5.6` |
@@ -129,13 +146,20 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 ```
 src/main/java/com/uptimecrew/multistate/
     Application.java  # Spring Boot entry point (@SpringBootApplication)
+    api/              # @RestController endpoints (TenantController)
+    security/         # SecurityFilterChain + JWT converter + RateLimitFilter
     model/            # domain types (value objects, entities)
+    entity/           # JPA @Entity types
+    readmodel/        # Mongo @Document read-side
+    repository/       # Spring Data JPA + Mongo repositories
     service/          # allocation strategies + AllocationService (Spring beans)
     exception/        # AllocationException hierarchy
 src/main/resources/
     application.yml   # local + test profiles, datasource, Actuator, logging
 src/test/java/com/uptimecrew/multistate/
     ApplicationContextLoadIT.java  # @SpringBootTest context + bean wiring
+    TenantPolyglotIT.java          # Postgres + Mongo + Redis end-to-end
+    TenantSecurityIT.java          # JWT + role + rate-limit MockMvc tests
     model/
     service/
     repository/       # Testcontainers Postgres integration tests

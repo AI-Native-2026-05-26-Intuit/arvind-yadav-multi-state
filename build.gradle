@@ -31,6 +31,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     // Spring Boot 4 splits test slices into per-technology modules.
     testImplementation 'org.springframework.boot:spring-boot-data-jpa-test'   // @DataJpaTest
+    testImplementation 'org.springframework.boot:spring-boot-webmvc-test'     // @AutoConfigureMockMvc
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'  // @ServiceConnection
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
@@ -59,6 +60,14 @@ dependencies {
     testImplementation 'org.testcontainers:mongodb'      // joins the BOM you added on W2 D2
     // Redis: use the core GenericContainer with the redis:7-alpine image — no extra
     // module needed for simple use.
+
+    // Add to dependencies { ... } in build.gradle, alongside your W2 D5 lines.
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'com.bucket4j:bucket4j-core:8.10.1'
+    implementation 'com.bucket4j:bucket4j-redis:8.10.1'     // reuses the W2 D5 Redis as the distributed bucket store
+
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
 test {
