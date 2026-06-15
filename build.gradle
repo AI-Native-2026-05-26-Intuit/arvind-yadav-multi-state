@@ -68,6 +68,18 @@ dependencies {
     implementation 'com.bucket4j:bucket4j-redis:8.10.1'     // reuses the W2 D5 Redis as the distributed bucket store
 
     testImplementation 'org.springframework.security:spring-security-test'
+
+    // ── W3 D1: OpenAPI + Resilience4j on Boot 4 ────────────────────────
+    // Spring Cloud 2023.0.x targets Boot 3.3 and breaks on Boot 4
+    // (NoClassDefFoundError on ServerProperties). We use Boot's built-in
+    // RestClient instead of OpenFeign, and Resilience4j's own Boot 3 starter
+    // (classpath-compatible with Boot 4) instead of the
+    // spring-cloud-starter-circuitbreaker bridge.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
+    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
+
+    testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
 }
 
 test {

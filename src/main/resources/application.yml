@@ -99,6 +99,25 @@ logging:
     com.uptimecrew.multistate: DEBUG     # turn up your own packages in local dev
     org.springframework.security: DEBUG  # logs the SecurityFilterChain being built at startup
 
+# ── W3 D1: OpenAPI + Feign client + Resilience4j circuit breaker ───────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+identity:
+  base-url: http://localhost:8090     # (1) WireMock stub address used by the contract test
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      identity:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+
 ---
 spring:
   config:
