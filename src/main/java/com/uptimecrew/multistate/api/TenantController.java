@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,9 +30,11 @@ public class TenantController {
     private static final Logger LOG = LoggerFactory.getLogger(TenantController.class);
 
     private final AllocationService service;
+    private final IdempotencyService idempotency;
 
-    public TenantController(AllocationService service) {
+    public TenantController(AllocationService service, IdempotencyService idempotency) {
         this.service = service;
+        this.idempotency = idempotency;
     }
 
     @GetMapping("/{id}")
@@ -50,12 +55,34 @@ public class TenantController {
                     .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @GetMapping("/{id}/summary")
+    @PostMapping("/{id}/summary")
     @PreAuthorize("hasAuthority('SCOPE_tenants.read') and hasRole('TENANT_READER')")
-    public Map<String, String> summary(@PathVariable String id,
-                                       @AuthenticationPrincipal Jwt jwt) throws InterruptedException {
-        LOG.info("summary id={} subject={}", id, jwt.getSubject());
-        Thread.sleep(100);
-        return Map.of("summary", "Stub LLM summary for " + id);
+    public ResponseEntity<Map<String, String>> summary(@PathVariable String id,
+                                                       @RequestHeader("Idempotency-Key") String idempotencyKey,
+                                                       @AuthenticationPrincipal Jwt jwt) {
+        if (!isValidUuid(idempotencyKey)) {
+            return ResponseEntity.badRequest().build();
+        }
+        LOG.info("summary id={} subject={} idemKey={}", id, jwt.getSubject(), idempotencyKey);
+        return idempotency.handle(idempotencyKey, "tenants.summary", () -> {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            return ResponseEntity.ok(Map.of("summary", "Stub LLM summary for " + id));
+        });
+    }
+
+    private static boolean isValidUuid(String value) {
+        if (value == null) {
+            return false;
+        }
+        try {
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 }
