@@ -63,6 +63,17 @@ public class TenantController {
 
     @PostMapping("/{id}/summary")
     @PreAuthorize("hasAuthority('SCOPE_tenants.read') and hasRole('TENANT_READER')")
+    @Operation(summary = "Generate an LLM summary for a tenant",
+               description = "Idempotent POST. Requires an Idempotency-Key (UUID). "
+                           + "Returns the cached body on retry with the same key.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Summary generated (or replayed from idempotency cache)"),
+        @ApiResponse(responseCode = "400", description = "Idempotency-Key header missing or not a valid UUID"),
+        @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+        @ApiResponse(responseCode = "403", description = "JWT present but lacks required scope or role"),
+        @ApiResponse(responseCode = "409", description = "Concurrent request with the same Idempotency-Key still in flight"),
+        @ApiResponse(responseCode = "429", description = "Per-subject rate limit exceeded")
+    })
     public ResponseEntity<Map<String, String>> summary(@PathVariable String id,
                                                        @RequestHeader("Idempotency-Key") String idempotencyKey,
                                                        @AuthenticationPrincipal Jwt jwt) {
