@@ -1,5 +1,7 @@
 package com.uptimecrew.multistate.api;
 
+import com.uptimecrew.multistate.clients.IdentityProfile;
+import com.uptimecrew.multistate.clients.IdentityService;
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
 import com.uptimecrew.multistate.service.AllocationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,10 +33,14 @@ public class TenantController {
 
     private final AllocationService service;
     private final IdempotencyService idempotency;
+    private final IdentityService identityService;
 
-    public TenantController(AllocationService service, IdempotencyService idempotency) {
+    public TenantController(AllocationService service,
+                            IdempotencyService idempotency,
+                            IdentityService identityService) {
         this.service = service;
         this.idempotency = idempotency;
+        this.identityService = identityService;
     }
 
     @GetMapping("/{id}")
@@ -70,7 +76,10 @@ public class TenantController {
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
             }
-            return ResponseEntity.ok(Map.of("summary", "Stub LLM summary for " + id));
+            IdentityProfile profile = identityService.getProfile(jwt.getSubject());
+            return ResponseEntity.ok(Map.of(
+                "summary", "Stub LLM summary for " + id,
+                "displayName", profile.displayName()));
         });
     }
 
