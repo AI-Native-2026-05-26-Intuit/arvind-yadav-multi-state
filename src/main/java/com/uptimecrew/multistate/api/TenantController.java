@@ -2,6 +2,10 @@ package com.uptimecrew.multistate.api;
 
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
 import com.uptimecrew.multistate.service.AllocationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -16,7 +20,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/tenants")
+@RequestMapping("/api/v1/tenants")
+@Tag(name = "Tenants", description = "Tenants read API and LLM-summary endpoint")
 public class TenantController {
 
     private static final Logger LOG = LoggerFactory.getLogger(TenantController.class);
@@ -29,6 +34,14 @@ public class TenantController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('SCOPE_tenants.read') and hasRole('TENANT_READER')")
+    @Operation(summary = "Fetch a tenant by id",
+               description = "Returns the denormalised read-model document for the given id.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Found"),
+        @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+        @ApiResponse(responseCode = "403", description = "JWT present but lacks required scope or role"),
+        @ApiResponse(responseCode = "404", description = "No tenant with that id")
+    })
     public ResponseEntity<TenantReadModel> getById(@PathVariable String id,
                                                    @AuthenticationPrincipal Jwt jwt) {
         LOG.info("get id={} subject={}", id, jwt.getSubject());
