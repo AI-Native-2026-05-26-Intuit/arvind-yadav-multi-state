@@ -57,6 +57,9 @@ class TenantSecurityIT {
                 PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
              Statement stmt = conn.createStatement()) {
             stmt.execute(Files.readString(Path.of("db/V1__schema.sql")));
+            // V3 adds the event_outbox table; Hibernate's validate mode requires it
+            // because EventOutboxEntity is part of the persistence unit.
+            stmt.execute(Files.readString(Path.of("db/V3__event_outbox.sql")));
             stmt.execute("""
                 INSERT INTO multistate.jurisdiction (code, display_name, has_income_tax)
                 VALUES ('CA', 'California', TRUE)
