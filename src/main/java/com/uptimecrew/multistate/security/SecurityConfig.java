@@ -45,6 +45,12 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/v3/api-docs",
                                  "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                // MCP SSE transport: /sse opens the event stream, /mcp/message is
+                // the client->server JSON-RPC channel. Left unauthenticated so a
+                // local LLM client (Claude Code) can attach during development.
+                // In production this should sit behind a separate filter chain
+                // with mTLS or a dedicated MCP-only bearer token.
+                .requestMatchers("/sse", "/mcp/**").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             .oauth2ResourceServer(o -> o.jwt(jwt -> jwt
