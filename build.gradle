@@ -68,6 +68,19 @@ dependencies {
     implementation 'com.bucket4j:bucket4j-redis:8.10.1'     // reuses the W2 D5 Redis as the distributed bucket store
 
     testImplementation 'org.springframework.security:spring-security-test'
+
+    // ── W3 D1: OpenAPI + Resilience4j on Boot 4 ────────────────────────
+    // Spring Cloud OpenFeign (incl. 2025.0.0) still references Boot 3 classes
+    // (e.g. org.springframework.boot.web.context.WebServerInitializedEvent),
+    // so on Boot 4 it dies with NoClassDefFoundError at context refresh. We
+    // use Boot's built-in RestClient + @HttpExchange interface for the same
+    // declarative-client shape, and Resilience4j's own Boot 3 starter
+    // (classpath-compatible with Boot 4) for the circuit breaker.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
+    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
+
+    testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
 }
 
 test {

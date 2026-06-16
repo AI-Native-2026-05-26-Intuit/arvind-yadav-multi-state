@@ -14,6 +14,23 @@ spring:
   profiles:
     default: local
   datasource:
+    # ─────────────────────────────────────────────────────────────────────
+    # PREREQ — install Docker Desktop (or Rancher Desktop) once:
+    #   https://www.docker.com/products/docker-desktop/
+    # Confirm it's running:   docker ps
+    #
+    # BEFORE `./gradlew bootRun` — start Postgres on port 5433:
+    #   docker run -d --name uc-postgres \
+    #     -p 5433:5432 \
+    #     -e POSTGRES_PASSWORD=devpass \
+    #     -e POSTGRES_DB=postgres \
+    #     postgres:16
+    #
+    # Verify it's up:   docker ps | grep uc-postgres
+    # Tail logs:        docker logs -f uc-postgres
+    # Stop + remove:    docker stop uc-postgres && docker rm uc-postgres
+    # Restart later:    docker start uc-postgres   (data persists in the container)
+    # ─────────────────────────────────────────────────────────────────────
     url: jdbc:postgresql://localhost:5433/postgres   # local Postgres container; 5432 is taken by an SSH tunnel
     username: postgres
     password: ${DB_PASSWORD:devpass}
@@ -21,9 +38,35 @@ spring:
       maximum-pool-size: 5
   data:
     mongodb:
+      # ───────────────────────────────────────────────────────────────────
+      # BEFORE `./gradlew bootRun` — start MongoDB on port 27017:
+      #   docker run -d --name uc-mongo -p 27017:27017 mongo:7
+      #
+      # Verify:        docker ps | grep uc-mongo
+      # Stop+remove:   docker stop uc-mongo && docker rm uc-mongo
+      # Restart:       docker start uc-mongo
+      # ───────────────────────────────────────────────────────────────────
       uri: mongodb://localhost:27017/multistate      # (1) placeholder; tests inject via @ServiceConnection
       auto-index-creation: true                      # (2) create @Indexed indexes on startup
     redis:
+      # ───────────────────────────────────────────────────────────────────
+      # BEFORE `./gradlew bootRun` — start Redis on port 6379:
+      #   docker run -d --name uc-redis -p 6379:6379 redis:7-alpine
+      #
+      # Verify:        docker ps | grep uc-redis
+      # Stop+remove:   docker stop uc-redis && docker rm uc-redis
+      # Restart:       docker start uc-redis
+      #
+      # ── One-liner: start ALL THREE at once ─────────────────────────────
+      #   docker run -d --name uc-postgres -p 5433:5432 \
+      #       -e POSTGRES_PASSWORD=devpass -e POSTGRES_DB=postgres postgres:16 \
+      #   && docker run -d --name uc-mongo -p 27017:27017 mongo:7 \
+      #   && docker run -d --name uc-redis -p 6379:6379 redis:7-alpine
+      #
+      # ── Stop ALL THREE ────────────────────────────────────────────────
+      #   docker stop uc-postgres uc-mongo uc-redis \
+      #   && docker rm   uc-postgres uc-mongo uc-redis
+      # ───────────────────────────────────────────────────────────────────
       host: localhost
       port: 6379
   cache:
@@ -55,6 +98,25 @@ logging:
     root: INFO
     com.uptimecrew.multistate: DEBUG     # turn up your own packages in local dev
     org.springframework.security: DEBUG  # logs the SecurityFilterChain being built at startup
+
+# ── W3 D1: OpenAPI + Feign client + Resilience4j circuit breaker ───────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+identity:
+  base-url: http://localhost:8090     # (1) WireMock stub address used by the contract test
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      identity:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
 
 ---
 spring:

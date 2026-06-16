@@ -2,6 +2,7 @@ package com.uptimecrew.multistate;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,6 +16,7 @@ import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.junit.jupiter.api.Test;
@@ -77,7 +79,7 @@ class TenantSecurityIT {
     @Test
     void getById_returns200_whenAuthenticatedWithScopeAndRole() throws Exception {
         seedTenant("test-id");
-        mvc.perform(get("/api/tenants/test-id")
+        mvc.perform(get("/api/v1/tenants/test-id")
                 .with(jwt().jwt(j -> j
                     .claim("scope", "tenants.read")
                     .claim("roles", List.of("TENANT_READER")))
@@ -88,13 +90,13 @@ class TenantSecurityIT {
 
     @Test
     void getById_returns401_whenAnonymous() throws Exception {
-        mvc.perform(get("/api/tenants/test-id"))
+        mvc.perform(get("/api/v1/tenants/test-id"))
            .andExpect(status().isUnauthorized());
     }
 
     @Test
     void getById_returns403_whenJwtMissingRole() throws Exception {
-        mvc.perform(get("/api/tenants/test-id")
+        mvc.perform(get("/api/v1/tenants/test-id")
                 .with(jwt().jwt(j -> j
                     .claim("scope", "tenants.read")
                     .claim("roles", List.of()))
@@ -105,7 +107,8 @@ class TenantSecurityIT {
     @Test
     void summary_returns429_after10Calls() throws Exception {
         for (int i = 0; i < 10; i++) {
-            mvc.perform(get("/api/tenants/test-id/summary")
+            mvc.perform(post("/api/v1/tenants/test-id/summary")
+                    .header("Idempotency-Key", UUID.randomUUID().toString())
                     .with(jwt().jwt(j -> j
                         .subject("rate-limit-user")
                         .claim("scope", "tenants.read")
@@ -114,7 +117,8 @@ class TenantSecurityIT {
                                    new SimpleGrantedAuthority("ROLE_TENANT_READER"))))
                .andExpect(status().isOk());
         }
-        mvc.perform(get("/api/tenants/test-id/summary")
+        mvc.perform(post("/api/v1/tenants/test-id/summary")
+                .header("Idempotency-Key", UUID.randomUUID().toString())
                 .with(jwt().jwt(j -> j
                     .subject("rate-limit-user")
                     .claim("scope", "tenants.read")

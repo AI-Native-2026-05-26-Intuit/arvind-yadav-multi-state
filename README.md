@@ -2,13 +2,21 @@
 
 A Java domain library for splitting a worker's income across the tax jurisdictions where the work was actually performed. The motivating problem: a worker who lives in one state but performs services across several owes income tax to each jurisdiction in proportion to the work done there. This project models the inputs (where work happened) and the outputs (how income is divided), and houses the strategies that compute the split.
 
-The domain core is now packaged as a **Spring Boot 3.3** application: the service and its allocation strategies are Spring-managed beans, and the build produces a runnable boot jar with Actuator health/info endpoints. The pure-Java domain types and standards (see [CLAUDE.md](CLAUDE.md)) are unchanged — Spring sits around them, not inside them.
+The domain core is now packaged as a **Spring Boot 4** application: the service and its allocation strategies are Spring-managed beans, and the build produces a runnable boot jar with Actuator health/info endpoints. The pure-Java domain types and standards (see [CLAUDE.md](CLAUDE.md)) are unchanged — Spring sits around them, not inside them.
 
 **Week 2 Day 4:** mapped the three W2 D1 tables to JPA entities (`Tenant`, `Allocation`, `Jurisdiction`) with a LAZY `Tenant`↔`Allocation` relationship, added three Spring Data `JpaRepository` interfaces (derived + `@Query` JPQL methods), wired `TenantRepository` into `AllocationService` under `@Transactional`, and added a Testcontainers-backed `@DataJpaTest` slice ([TenantRepositoryIT](src/test/java/com/uptimecrew/multistate/repository/TenantRepositoryIT.java)).
 
 **Week 2 Day 5:** added a polyglot read side — a Mongo `@Document` read model ([TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java)) with embedded allocations and its `MongoRepository`, write-through from `AllocationService` to Mongo inside the existing JPA transaction, and a Redis-backed `@Cacheable` `findById` read path (`@EnableCaching`), all verified end-to-end against Postgres + Mongo + Redis containers in [TenantPolyglotIT](src/test/java/com/uptimecrew/multistate/TenantPolyglotIT.java).
 
-**Week 3 Day 1:** put the read side behind a secured HTTP API. Added an OAuth2 resource-server [SecurityConfig](src/main/java/com/uptimecrew/multistate/security/SecurityConfig.java) (stateless, JWT-validated, default-deny under `/api/**`, `/actuator/health` public) with a `JwtAuthenticationConverter` that maps the `scope` claim to `SCOPE_*` authorities and a custom `roles` claim to `ROLE_*` authorities, enabling `@PreAuthorize` SpEL on the controller. [TenantController](src/main/java/com/uptimecrew/multistate/api/TenantController.java) exposes `GET /api/tenants/{id}` and `GET /api/tenants/{id}/summary`, both gated on `SCOPE_tenants.read` **and** `ROLE_TENANT_READER`. A per-subject Bucket4j [RateLimitFilter](src/main/java/com/uptimecrew/multistate/security/RateLimitFilter.java) (10 requests / minute, in-memory `ConcurrentHashMap` keyed by JWT subject, scoped to `/api/**/summary`) is registered *after* `BearerTokenAuthenticationFilter` so the JWT principal is resolved before the bucket lookup; over-limit responses return `429` with `Retry-After: 60`. End-to-end coverage in [TenantSecurityIT](src/test/java/com/uptimecrew/multistate/TenantSecurityIT.java) asserts 200/401/403 on the read endpoint and 429-after-10 on the summary endpoint, against real Postgres + Mongo + Redis containers.
+**Week 3 Day 1:** put the read side behind a secured HTTP API. Added an OAuth2 resource-server [SecurityConfig](src/main/java/com/uptimecrew/multistate/security/SecurityConfig.java) (stateless, JWT-validated, default-deny under `/api/**`, `/actuator/health` public) with a `JwtAuthenticationConverter` that maps the `scope` claim to `SCOPE_*` authorities and a custom `roles` claim to `ROLE_*` authorities, enabling `@PreAuthorize` SpEL on the controller. A per-subject Bucket4j [RateLimitFilter](src/main/java/com/uptimecrew/multistate/security/RateLimitFilter.java) (10 requests / minute, in-memory `ConcurrentHashMap` keyed by JWT subject, scoped to `/api/**/summary`) is registered *after* `BearerTokenAuthenticationFilter` so the JWT principal is resolved before the bucket lookup; over-limit responses return `429` with `Retry-After: 60`. End-to-end coverage in [TenantSecurityIT](src/test/java/com/uptimecrew/multistate/TenantSecurityIT.java) asserts 200/401/403 on the read endpoint and 429-after-10 on the summary endpoint, against real Postgres + Mongo + Redis containers.
+
+**Week 3 Day 2:** versioned the API under `/api/v1`, documented it with OpenAPI 3.1, made the summary endpoint a write-shaped idempotent POST, and wired a declarative identity client behind a Resilience4j circuit breaker.
+
+- **URI versioning + OpenAPI.** Routes moved to `/api/v1/tenants/**`. [OpenApiConfig](src/main/java/com/uptimecrew/multistate/config/OpenApiConfig.java) registers an `@Bean OpenAPI` with `Info(title, v1.0.0, description)` and an HTTP/bearer `SecurityScheme` named `bearer-jwt`; both controller routes carry `@Operation` + `@ApiResponses`. springdoc serves `/v3/api-docs` and `/swagger-ui.html`; both paths are permit-listed in `SecurityConfig` so the Swagger UI works without a token.
+- **Idempotent POST `/summary`.** `GET → POST /api/v1/tenants/{id}/summary` now requires an `Idempotency-Key` UUID header (400 on missing/non-UUID). [IdempotencyService](src/main/java/com/uptimecrew/multistate/api/IdempotencyService.java) wraps `StringRedisTemplate`: `idem:{namespace}:{key}` is set with `SETNX` and a 24h TTL, the response body is Jackson-serialised on success, and a concurrent retry while in-flight returns `409 Conflict`. Idempotency complements (does not replace) the per-subject rate limit — Bucket4j caps *frequency*, idempotency makes a *single* request safe to retry.
+- **Identity client + circuit breaker.** [TenantIdentityClient](src/main/java/com/uptimecrew/multistate/clients/TenantIdentityClient.java) is a declarative HTTP-client interface bound to `${identity.base-url}`. [IdentityService](src/main/java/com/uptimecrew/multistate/clients/IdentityService.java) wraps it with `@CircuitBreaker(name = "identity", fallbackMethod = "fallbackProfile")`; the fallback returns a degraded `IdentityProfile(userId, "", "unknown")`. `TenantController.summary` calls `identityService.getProfile(jwt.getSubject())` and returns `displayName` in the body. The breaker config lives in `application.yml` under `resilience4j.circuitbreaker.instances.identity` (sliding window 10, failure-rate threshold 50%, 10s open, 3 permitted in half-open). The breaker is on the `@Service`, not the client interface — the declarative-client proxy stack short-circuits before the Resilience4j AOP advisor, so an annotation on the interface is silently a no-op.
+- **Deviation — declarative client framework.** The W3 D2 assignment specifies Spring Cloud OpenFeign. The current Spring Cloud line (incl. `spring-cloud-dependencies:2025.0.0`) still compiles against Boot 3 internals (`org.springframework.boot.web.context.WebServerInitializedEvent`), so context refresh on Boot 4 fails with `NoClassDefFoundError`. We use Spring Boot's native `@HttpExchange` interface bound to a `RestClient` via `HttpServiceProxyFactory` — same declarative-interface shape, no Spring Cloud BOM. Every other piece (the `IdentityService` wrapper, the `@CircuitBreaker` and fallback signature, the breaker config, the controller wiring, the contract test) is unchanged.
+- **Contract test.** [IdentityClientCircuitBreakerIT](src/test/java/com/uptimecrew/multistate/contract/IdentityClientCircuitBreakerIT.java) runs in-process WireMock on port 8090 (matching `identity.base-url`) and covers four behaviours: the 200 happy path, breaker transitioning to OPEN after repeated 5xx (with subsequent calls short-circuiting to the fallback without reaching WireMock), the controller POST returning `200` with `$.displayName` in the body, and `/v3/api-docs` exposing `/api/v1/tenants/{id}` with the `bearer-jwt` scheme.
 
 ## Build & test
 
@@ -28,7 +36,7 @@ JaCoCo is wired into the build. After any test run, the HTML report lives at `bu
 
 ## Spring application
 
-The project is bootstrapped as a Spring Boot 3.3 application (Boot + dependency-management Gradle plugins).
+The project is bootstrapped as a Spring Boot 4 application (Boot + dependency-management Gradle plugins).
 
 - [Application](src/main/java/com/uptimecrew/multistate/Application.java) — the `@SpringBootApplication` (also `@EnableCaching`) entry point. Component-scans everything under `com.uptimecrew.multistate.*`. The Hikari `DataSource` is auto-configured from `spring.datasource.*` (via `spring-boot-starter-jdbc` + the PostgreSQL driver), which lets Spring Data JPA stand up the `EntityManagerFactory` and repositories the service depends on.
 - **Beans.** [AllocationService](src/main/java/com/uptimecrew/multistate/service/AllocationService.java) is a `@Service`; the strategies are `@Component`s. [DayCountAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/DayCountAllocationStrategy.java) is marked `@Primary`, so it is the `AllocationStrategy` Spring injects into the service unless a `@Qualifier` narrows the choice. [WeightedDayCountAllocationStrategy](src/main/java/com/uptimecrew/multistate/service/WeightedDayCountAllocationStrategy.java) is registered as a secondary bean (no `@Primary`), instantiated via its no-arg constructor with the default per-jurisdiction weight. Constructor injection on the single-constructor service needs no `@Autowired` (Spring 6).
@@ -49,12 +57,14 @@ The project is bootstrapped as a Spring Boot 3.3 application (Boot + dependency-
 
 ## HTTP API
 
-All `/api/**` routes require a valid Bearer JWT and authority `SCOPE_tenants.read` + role `TENANT_READER`. `/actuator/health` is unauthenticated. The session is stateless; CSRF is disabled because there is no cookie-based auth surface.
+All `/api/v1/**` routes require a valid Bearer JWT and authority `SCOPE_tenants.read` + role `TENANT_READER`. `/actuator/health`, `/v3/api-docs/**`, and `/swagger-ui/**` are unauthenticated. The session is stateless; CSRF is disabled because there is no cookie-based auth surface.
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/api/tenants/{id}` | JWT + `SCOPE_tenants.read` + `ROLE_TENANT_READER` | Returns the [TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java) from the Redis-cached Mongo read side. 404 if not found. |
-| `GET` | `/api/tenants/{id}/summary` | Same as above | Stubbed LLM-style summary. Rate-limited to **10 requests / minute per JWT subject**; over-limit returns `429` with `Retry-After: 60`. |
+| `GET` | `/api/v1/tenants/{id}` | JWT + `SCOPE_tenants.read` + `ROLE_TENANT_READER` | Returns the [TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java) from the Redis-cached Mongo read side. 404 if not found. |
+| `POST` | `/api/v1/tenants/{id}/summary` | Same as above + `Idempotency-Key` UUID header | Stubbed LLM-style summary. Body includes `displayName` resolved from the identity service (degraded value if the breaker is OPEN). Rate-limited to **10 requests / minute per JWT subject**; over-limit returns `429` with `Retry-After: 60`. `400` on missing/non-UUID header; `409` on concurrent retry with the same key while the original is still in flight. |
+| `GET` | `/v3/api-docs` | none | OpenAPI 3.1 JSON. |
+| `GET` | `/swagger-ui.html` | none | Swagger UI. |
 | `GET` | `/actuator/health` | none | Liveness probe. |
 
 Anonymous → `401`. Authenticated but missing scope/role → `403`. The rate-limit filter is in-memory per process; in a horizontally scaled deployment swap in `bucket4j-redis` so the bucket is shared.
@@ -120,17 +130,22 @@ Integration tests (`*IT` suffix) boot a real context or container:
 
 - [ApplicationContextLoadIT](src/test/java/com/uptimecrew/multistate/ApplicationContextLoadIT.java) — `@SpringBootTest` under the `test` profile. Asserts the context loads and the `AllocationService` bean is wired, then exercises it end-to-end through the injected `@Primary` (day-count) strategy.
 - [TenantQueryIT](src/test/java/com/uptimecrew/multistate/repository/TenantQueryIT.java) — Testcontainers-backed Postgres query test. Waits on the listening port (not the default log wait) and a 120s startup timeout to stay reliable on Rancher Desktop's moby engine.
-- [TenantSecurityIT](src/test/java/com/uptimecrew/multistate/TenantSecurityIT.java) — `@SpringBootTest` + `@AutoConfigureMockMvc` with real Postgres, Mongo and Redis via Testcontainers `@ServiceConnection`. Uses Spring Security's `jwt()` request post-processor to mint test JWTs and asserts the full authentication / authorization / rate-limit contract: `200` with the right scope+role, `401` anonymous, `403` when the role is missing, and `429` + `Retry-After: 60` after 10 `/summary` calls for one subject.
+- [TenantSecurityIT](src/test/java/com/uptimecrew/multistate/TenantSecurityIT.java) — `@SpringBootTest` + `@AutoConfigureMockMvc` with real Postgres, Mongo and Redis via Testcontainers `@ServiceConnection`. Uses Spring Security's `jwt()` request post-processor to mint test JWTs and asserts the full authentication / authorization / rate-limit contract: `200` with the right scope+role, `401` anonymous, `403` when the role is missing, and `429` + `Retry-After: 60` after 10 `POST /summary` calls (with unique `Idempotency-Key` headers) for one subject.
+- [IdentityClientCircuitBreakerIT](src/test/java/com/uptimecrew/multistate/contract/IdentityClientCircuitBreakerIT.java) — `@SpringBootTest(webEnvironment = RANDOM_PORT)` + `@AutoConfigureMockMvc` with in-process WireMock on port 8090 (matching `identity.base-url`). Covers the identity 200 path, breaker transitioning to OPEN after repeated 5xx with subsequent calls short-circuiting to the fallback (no further WireMock hits), the controller POST returning `200` with `$.displayName`, and `/v3/api-docs` exposing `/api/v1/tenants/{id}` with the `bearer-jwt` scheme. Resets the `identity` breaker `@BeforeEach` so the 500-loop test does not bleed OPEN state into the 200-stub test.
 
 ## Dependencies
 
-Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.dependency-management`), pinned by the plugin version `3.3.2`.
+Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.dependency-management`), pinned by the `org.springframework.boot` plugin version `4.0.6`.
 
 | Scope | Library |
 | --- | --- |
 | `implementation` | `org.springframework.boot:spring-boot-starter`, `spring-boot-starter-web` (embedded Tomcat for Actuator), `spring-boot-starter-actuator`, `spring-boot-starter-security`, `spring-boot-starter-oauth2-resource-server` |
-| `implementation` | `com.bucket4j:bucket4j-core` (per-subject token-bucket rate limiting) |
+| `implementation` | `com.bucket4j:bucket4j-core`, `com.bucket4j:bucket4j-redis` (per-subject token-bucket rate limiting) |
+| `implementation` | `org.springframework.boot:spring-boot-starter-data-redis` (also backs the W3 D2 idempotency store) |
+| `implementation` | `org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0` (OpenAPI 3.1 + Swagger UI) |
+| `implementation` | `io.github.resilience4j:resilience4j-spring-boot3:2.2.0` (`@CircuitBreaker` advisor on the identity wrapper) |
 | `testImplementation` | `org.springframework.security:spring-security-test` (MockMvc `jwt()` post-processor) |
+| `testImplementation` | `org.wiremock:wiremock-standalone:3.9.1` (contract test for the identity client) |
 | `runtimeOnly` | `org.springframework.boot:spring-boot-starter-jdbc` (HikariCP + `DataSource`), `org.postgresql:postgresql:42.7.3` |
 | `implementation` | `org.slf4j:slf4j-api:2.0.12` |
 | `runtimeOnly` | `ch.qos.logback:logback-classic:1.5.6` |
@@ -146,7 +161,9 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 ```
 src/main/java/com/uptimecrew/multistate/
     Application.java  # Spring Boot entry point (@SpringBootApplication)
-    api/              # @RestController endpoints (TenantController)
+    api/              # @RestController endpoints (TenantController) + IdempotencyService
+    clients/          # declarative identity HTTP client + IdentityService (breaker wrapper)
+    config/           # OpenApiConfig (OpenAPI 3.1 bean + bearer-jwt scheme)
     security/         # SecurityFilterChain + JWT converter + RateLimitFilter
     model/            # domain types (value objects, entities)
     entity/           # JPA @Entity types
@@ -155,11 +172,14 @@ src/main/java/com/uptimecrew/multistate/
     service/          # allocation strategies + AllocationService (Spring beans)
     exception/        # AllocationException hierarchy
 src/main/resources/
-    application.yml   # local + test profiles, datasource, Actuator, logging
+    application.yml   # local + test profiles, datasource, Actuator, logging,
+                      # springdoc paths, identity.base-url, resilience4j breaker
 src/test/java/com/uptimecrew/multistate/
-    ApplicationContextLoadIT.java  # @SpringBootTest context + bean wiring
-    TenantPolyglotIT.java          # Postgres + Mongo + Redis end-to-end
-    TenantSecurityIT.java          # JWT + role + rate-limit MockMvc tests
+    ApplicationContextLoadIT.java     # @SpringBootTest context + bean wiring
+    TenantPolyglotIT.java             # Postgres + Mongo + Redis end-to-end
+    TenantSecurityIT.java             # JWT + role + rate-limit MockMvc tests
+    contract/
+        IdentityClientCircuitBreakerIT.java  # WireMock + breaker + OpenAPI assertion
     model/
     service/
     repository/       # Testcontainers Postgres integration tests

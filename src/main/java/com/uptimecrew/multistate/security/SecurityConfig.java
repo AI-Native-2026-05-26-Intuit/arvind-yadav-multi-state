@@ -43,6 +43,8 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/v3/api-docs/**", "/v3/api-docs",
+                                 "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             .oauth2ResourceServer(o -> o.jwt(jwt -> jwt
