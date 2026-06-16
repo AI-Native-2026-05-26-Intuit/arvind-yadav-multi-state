@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.outbox.EventOutboxRepository;
 import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import com.uptimecrew.multistate.repository.TenantRepository;
 
@@ -33,9 +34,14 @@ class AllocationServiceTest {
         return mock(TenantReadModelRepository.class);
     }
 
+    /** Mock outbox repository — outbox writes are verified in the integration tests. */
+    private static EventOutboxRepository outboxRepo() {
+        return mock(EventOutboxRepository.class);
+    }
+
     @Test
     void persists_tenant_with_primary_jurisdiction_from_largest_allocation() {
-        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo());
+        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo(), outboxRepo());
         List<WorkDay> workDays = List.of(
             new WorkDay("wd-1", "emp_42", "CA", LocalDate.of(2026, 3, 1)),
             new WorkDay("wd-2", "emp_42", "CA", LocalDate.of(2026, 3, 2)),
@@ -55,7 +61,7 @@ class AllocationServiceTest {
     @Test
     void saves_the_built_entity_to_the_repository() {
         TenantRepository repo = savingRepo();
-        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), repo, readModelRepo());
+        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), repo, readModelRepo(), outboxRepo());
 
         Tenant saved = service.allocate(
             "emp_42",
@@ -70,16 +76,19 @@ class AllocationServiceTest {
     @Test
     void rejects_null_constructor_args() {
         TenantRepository repo = mock(TenantRepository.class);
-        assertThrows(NullPointerException.class, () -> new AllocationService(null, repo, readModelRepo()));
         assertThrows(NullPointerException.class,
-            () -> new AllocationService(new DayCountAllocationStrategy(), null, readModelRepo()));
+            () -> new AllocationService(null, repo, readModelRepo(), outboxRepo()));
         assertThrows(NullPointerException.class,
-            () -> new AllocationService(new DayCountAllocationStrategy(), repo, null));
+            () -> new AllocationService(new DayCountAllocationStrategy(), null, readModelRepo(), outboxRepo()));
+        assertThrows(NullPointerException.class,
+            () -> new AllocationService(new DayCountAllocationStrategy(), repo, null, outboxRepo()));
+        assertThrows(NullPointerException.class,
+            () -> new AllocationService(new DayCountAllocationStrategy(), repo, readModelRepo(), null));
     }
 
     @Test
     void rejects_null_arguments() {
-        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo());
+        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo(), outboxRepo());
         List<WorkDay> emptyDays = List.of();
         assertThrows(NullPointerException.class,
             () -> service.allocate(null, "Acme LLC", BigDecimal.ZERO, emptyDays, PERIOD));
@@ -95,14 +104,14 @@ class AllocationServiceTest {
 
     @Test
     void rejects_negative_total_income() {
-        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo());
+        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo(), outboxRepo());
         assertThrows(IllegalArgumentException.class,
             () -> service.allocate("emp_42", "Acme LLC", new BigDecimal("-1.00"), List.of(), PERIOD));
     }
 
     @Test
     void throws_when_no_allocations_to_derive_primary_jurisdiction() {
-        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo());
+        AllocationService service = new AllocationService(new DayCountAllocationStrategy(), savingRepo(), readModelRepo(), outboxRepo());
         assertThrows(IllegalArgumentException.class,
             () -> service.allocate("emp_42", "Acme LLC", new BigDecimal("100.00"), List.of(), PERIOD));
     }

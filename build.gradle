@@ -81,6 +81,19 @@ dependencies {
     implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
 
     testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
+
+    // Add to dependencies { ... } in build.gradle, alongside your W3 D2 lines.
+    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.springframework.ai:spring-ai-starter-mcp-server-webmvc:2.0.0'
+
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+    testImplementation 'org.testcontainers:kafka:1.20.4'
+    testImplementation 'org.awaitility:awaitility:4.2.2'
+
+    // Spring Boot 3.3 already manages spring-kafka; the explicit Spring AI MCP
+    // starter version is required because Spring AI is not in the Boot BOM.
+    // If 1.0.0-M5 is unavailable, fall back to the latest 1.0.0-Mx milestone
+    // matching your Spring Boot version, or use io.modelcontextprotocol:mcp-server.
 }
 
 test {

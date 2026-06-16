@@ -3,6 +3,7 @@ package com.uptimecrew.multistate;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Spring Boot entry point for the multistate application.
@@ -18,6 +19,7 @@ import org.springframework.cache.annotation.EnableCaching;
  */
 @SpringBootApplication
 @EnableCaching                  // activate Spring's cache abstraction for @Cacheable read paths
+@EnableScheduling               // run @Scheduled outbox publisher on the Spring scheduler thread pool
 public class Application {
 
     public static void main(String[] args) {

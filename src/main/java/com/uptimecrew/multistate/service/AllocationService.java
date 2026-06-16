@@ -1,12 +1,19 @@
 package com.uptimecrew.multistate.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.exception.AllocationException;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
+import com.uptimecrew.multistate.outbox.EventOutboxEntity;
+import com.uptimecrew.multistate.outbox.EventOutboxRepository;
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
 import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import com.uptimecrew.multistate.repository.TenantRepository;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,16 +58,25 @@ public class AllocationService {
     /** Cache region for {@link #findById(String)} — Redis-backed in the running app. */
     public static final String CACHE_NAME = "multistate.byId";
 
+    /** Kafka topic for tenant lifecycle events emitted via the outbox. */
+    public static final String TENANT_EVENTS_TOPIC = "tenants.events";
+
     private final AllocationStrategy strategy;
     private final TenantRepository repository;                   // second constructor arg
     private final TenantReadModelRepository readModelRepository; // third arg — Mongo write-through target
+    private final EventOutboxRepository outboxRepository;        // W3 D3: transactional-outbox target
+    // ObjectMapper is thread-safe once configured — owned here rather than injected to
+    // avoid coupling this service to Spring Boot's Jackson autoconfig wiring.
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AllocationService(AllocationStrategy strategy,
                              TenantRepository repository,
-                             TenantReadModelRepository readModelRepository) {
+                             TenantReadModelRepository readModelRepository,
+                             EventOutboxRepository outboxRepository) {
         this.strategy = Objects.requireNonNull(strategy, "strategy");
         this.repository = Objects.requireNonNull(repository, "repository");
         this.readModelRepository = Objects.requireNonNull(readModelRepository, "readModelRepository");
+        this.outboxRepository = Objects.requireNonNull(outboxRepository, "outboxRepository");
     }
 
     /**
@@ -143,6 +159,33 @@ public class AllocationService {
         readModelRepository.save(projection);
         LOG.info("write-through to mongo id={} status={} primaryState={} allocations={}",
             saved.getId(), saved.getStatus(), saved.getPrimaryJurisdictionCode(), embedded.size());
+
+        // Transactional outbox: the event row is inserted in the SAME @Transactional
+        // boundary as the domain writes above, so it's committed atomically with them.
+        // OutboxPublisher polls the table on its own schedule and forwards rows to
+        // Kafka; we don't talk to Kafka here. The aggregate id (tenant id) is used as
+        // the Kafka message key so per-aggregate ordering is preserved on the topic.
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("eventType", "TenantAllocated");
+        payload.put("tenantId", saved.getId());
+        payload.put("primaryJurisdictionCode", saved.getPrimaryJurisdictionCode());
+        payload.put("status", saved.getStatus());
+        payload.put("strategy", strategy.getClass().getSimpleName());
+        payload.put("allocatedFor", allocatedFor.toString());
+        payload.put("allocationCount", allocations.size());
+        payload.put("totalIncome", totalIncome.toPlainString());
+        payload.put("occurredAt", now.toString());
+        final String payloadJson;
+        try {
+            payloadJson = objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException ex) {
+            // Jackson failing on a Map<String,Object> built from primitives means a
+            // genuine programmer error, not an event we can recover from — fail loudly
+            // so the surrounding transaction rolls back (the tenant write goes with it).
+            throw new IllegalStateException("failed to serialize outbox payload for tenant " + saved.getId(), ex);
+        }
+        outboxRepository.save(new EventOutboxEntity(saved.getId(), TENANT_EVENTS_TOPIC, payloadJson));
+        LOG.info("outbox enqueued tenantId={} topic={}", saved.getId(), TENANT_EVENTS_TOPIC);
 
         return saved;
     }

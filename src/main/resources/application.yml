@@ -81,6 +81,35 @@ spring:
           # (1) Dummy IdP issuer for production wiring; tests override with a mock
           #     JwkSource via spring-security-test so they don't need a real IdP.
           issuer-uri: https://idp.example.internal/realms/uptimecrew
+  kafka:
+    bootstrap-servers: localhost:9092         # (1) overridden by @ServiceConnection in tests
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Outbox payloads are already JSON strings (serialized inside AllocationService),
+      # so we use a String serializer here to avoid double-encoding the body.
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: multistate-read-model-builder
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: '*'
+    listener:
+      ack-mode: RECORD
+  ai:
+    mcp:
+      server:
+        name: multistate-mcp
+        version: 1.0.0
+        type: SYNC
+        transport: SSE
 
 
 
