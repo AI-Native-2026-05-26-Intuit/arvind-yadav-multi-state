@@ -115,6 +115,10 @@ dependencies {
     implementation 'com.networknt:json-schema-validator:3.0.4'
 
     testImplementation 'org.springframework.graphql:spring-graphql-test'
+    // Boot 4 splits test slices into per-technology modules — this one ships
+    // @AutoConfigureGraphQlTester (the auto-configuration is NOT in
+    // spring-boot-starter-test, unlike Boot 3).
+    testImplementation 'org.springframework.boot:spring-boot-graphql-test'
 }
 
 test {
