@@ -1,5 +1,6 @@
 package com.uptimecrew.multistate.graphql;
 
+import com.uptimecrew.multistate.llm.LlmSummaryService;
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
 import com.uptimecrew.multistate.service.AllocationService;
 import java.util.List;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.BatchMapping;
+import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
 
@@ -25,9 +27,11 @@ public class TenantGraphQlController {
     private static final Logger LOG = LoggerFactory.getLogger(TenantGraphQlController.class);
 
     private final AllocationService service;
+    private final LlmSummaryService llmSummary;
 
-    public TenantGraphQlController(AllocationService service) {
+    public TenantGraphQlController(AllocationService service, LlmSummaryService llmSummary) {
         this.service = service;
+        this.llmSummary = llmSummary;
     }
 
     @QueryMapping
@@ -39,6 +43,12 @@ public class TenantGraphQlController {
     @QueryMapping
     public List<TenantReadModel> latestTenants(@Argument Integer limit) {
         return service.findLatest(limit == null ? 10 : limit);
+    }
+
+    @MutationMapping
+    public TenantSummary summarizeTenant(@Argument String id) {
+        LOG.info("graphql mutation summarizeTenant id={}", id);
+        return llmSummary.summarize(id);
     }
 
     /**
