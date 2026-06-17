@@ -104,7 +104,15 @@ dependencies {
     // modules resolve from the same release line. 1.0.0-M5 isn't on Central; 2.0.0
     // is the released line that matches our `spring-ai-starter-mcp-server-webmvc`.
     implementation 'org.springframework.ai:spring-ai-starter-model-anthropic:2.0.0'
-    implementation 'com.networknt:json-schema-validator:1.5.1'
+    // Aligned with mcp-json-jackson3 (transitive through
+    // spring-ai-starter-mcp-server-webmvc). MCP calls into
+    // com.networknt.schema.Schema.validate(tools.jackson.databind.JsonNode) — i.e.
+    // the Jackson 3 overload, present from networknt 3.x onward. Pin lower:
+    //   * 1.x — McpSyncServer bean construction fails NoClassDefFoundError
+    //     on com.networknt.schema.dialect.Dialects.
+    //   * 2.x — Schema.validate only takes com.fasterxml (Jackson 2),
+    //     MCP fails NoSuchMethodError on the Jackson 3 overload.
+    implementation 'com.networknt:json-schema-validator:3.0.4'
 
     testImplementation 'org.springframework.graphql:spring-graphql-test'
 }

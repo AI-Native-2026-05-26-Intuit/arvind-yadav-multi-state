@@ -1,21 +1,22 @@
 package com.uptimecrew.multistate.llm;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SpecVersion.VersionFlag;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.Error;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import com.uptimecrew.multistate.graphql.TenantSummary;
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
 import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import java.io.InputStream;
-import java.util.Set;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Builds a structured {@link TenantSummary} from the tenant read model using
@@ -32,6 +33,17 @@ import org.springframework.stereotype.Service;
  * {@code stateCount}). A future model release that drifts the shape — adds an
  * extra field, omits one, or sends a negative {@code stateCount} — fails loudly
  * here instead of silently shipping a malformed summary.
+ *
+ * <p>Uses the networknt 3.x API ({@link SchemaRegistry} / {@link Schema} /
+ * {@link Error}) bound to Jackson 3 ({@code tools.jackson.*}). This is the
+ * minimum line compatible with the {@code mcp-json-jackson3} module that
+ * Spring AI's MCP server starter pulls in: MCP calls
+ * {@code Schema.validate(tools.jackson.databind.JsonNode)} on startup, and
+ * networknt 1.x/2.x only expose the Jackson 2 overload (and 1.x lacks the
+ * {@code Dialects} class entirely). Spring's autoconfigured
+ * {@code com.fasterxml.jackson.databind.ObjectMapper} is the wrong type here,
+ * so we own a Jackson 3 {@link JsonMapper} locally — used ONLY for the
+ * schema-validation conversion, never elsewhere in the app.
  */
 @Service
 public class LlmSummaryService {
@@ -40,19 +52,17 @@ public class LlmSummaryService {
 
     private final ChatClient chatClient;
     private final TenantReadModelRepository readModelRepository;
-    private final ObjectMapper mapper;
-    private final JsonSchema schema;
+    private final ObjectMapper jackson3 = JsonMapper.builder().build();
+    private final Schema schema;
 
     public LlmSummaryService(ChatClient.Builder builder,
-                             TenantReadModelRepository readModelRepository,
-                             ObjectMapper mapper) {
+                             TenantReadModelRepository readModelRepository) {
         this.chatClient = builder.build();
         this.readModelRepository = readModelRepository;
-        this.mapper = mapper;
         try (InputStream in = new ClassPathResource(
                 "schemas/TenantSummary.schema.json").getInputStream()) {
-            this.schema = JsonSchemaFactory
-                    .getInstance(VersionFlag.V202012)
+            this.schema = SchemaRegistry
+                    .withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
                     .getSchema(in);
         } catch (Exception ex) {
             throw new IllegalStateException("failed to load TenantSummary schema", ex);
@@ -72,8 +82,8 @@ public class LlmSummaryService {
     }
 
     private void validate(TenantSummary candidate) {
-        JsonNode node = mapper.valueToTree(candidate);
-        Set<ValidationMessage> errors = schema.validate(node);
+        JsonNode node = jackson3.valueToTree(candidate);
+        List<Error> errors = schema.validate(node);
         if (!errors.isEmpty()) {
             LOG.warn("schema violation errors={}", errors);
             throw new IllegalStateException("LLM output failed JSON Schema validation: " + errors);
