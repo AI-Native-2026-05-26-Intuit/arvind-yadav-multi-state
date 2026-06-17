@@ -107,6 +107,14 @@ spring:
         spring.deserializer.value.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
     listener:
       ack-mode: RECORD
+  graphql:
+    path: /graphql
+    graphiql:
+      enabled: true
+      path: /graphiql
+    schema:
+      printer:
+        enabled: true            # GET /graphql/schema returns the SDL for inspection
   ai:
     mcp:
       server:
@@ -114,6 +122,12 @@ spring:
         version: 1.0.0
         type: SYNC
         transport: SSE
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:dummy}
+      chat:
+        options:
+          model: claude-sonnet-4-5
+          max-tokens: 1024
 
 
 

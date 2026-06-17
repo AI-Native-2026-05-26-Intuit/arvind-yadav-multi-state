@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TenantSummary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["primaryState", "totalAllocation", "stateCount", "complianceTier"],
+  "properties": {
+    "primaryState": { "type": "string", "description": "the two-letter primary state code (e.g. CA, NY)" },
+    "totalAllocation": { "type": "number", "description": "the total allocated income, in dollars" },
+    "stateCount": { "type": "integer", "minimum": 0, "description": "the number of distinct states involved" },
+    "complianceTier": { "type": "string", "description": "the compliance tier (GREEN, AMBER, RED)" }
+  }
+}

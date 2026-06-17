@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uptimecrew.multistate.entity.Tenant;
 import com.uptimecrew.multistate.exception.AllocationException;
+import com.uptimecrew.multistate.graphql.LineItem;
 import com.uptimecrew.multistate.model.IncomeAllocation;
 import com.uptimecrew.multistate.model.WorkDay;
 import com.uptimecrew.multistate.outbox.EventOutboxEntity;
@@ -18,6 +19,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -223,5 +225,44 @@ public class AllocationService {
             e.getStatus(),
             Instant.now(),                      // capturedAt — rebuilt now
             List.of()));
+    }
+
+    /**
+     * Returns the most-recently-projected tenant read-model documents, newest
+     * first, capped at {@code limit}. Backs the GraphQL {@code latestTenants}
+     * query. Reads straight from the Mongo read model — no cache-aside here,
+     * since the query is exploratory and ordering changes with every write.
+     */
+    public List<TenantReadModel> findLatest(int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive: " + limit);
+        }
+        return readModelRepository.findAllByOrderByCapturedAtDesc(PageRequest.of(0, limit));
+    }
+
+    /**
+     * Batch resolver for the GraphQL {@code Tenant.lines} field — pairs every
+     * parent with its already-embedded allocations in a single pass, so Spring
+     * for GraphQL invokes us once per generation regardless of parent count.
+     *
+     * <p>Because {@link TenantReadModel} embeds its children inline in the same
+     * Mongo document, the parent fetch has already brought the allocations
+     * along — we issue ZERO extra reads here. The N+1 we're avoiding is in
+     * application code, not in the database: without {@code @BatchMapping},
+     * Spring for GraphQL would invoke a per-parent resolver once per item in
+     * the list, and any per-call work (logging, mapping setup, future eager
+     * lookups) would multiply. With this method, the mapping runs exactly
+     * once per query.
+     */
+    public Map<TenantReadModel, List<LineItem>> loadLineItemsByParent(List<TenantReadModel> parents) {
+        Objects.requireNonNull(parents, "parents");
+        Map<TenantReadModel, List<LineItem>> out = new LinkedHashMap<>(parents.size());
+        for (TenantReadModel parent : parents) {
+            List<LineItem> lines = parent.getAllocations().stream()
+                .map(LineItem::from)
+                .toList();
+            out.put(parent, lines);
+        }
+        return out;
     }
 }

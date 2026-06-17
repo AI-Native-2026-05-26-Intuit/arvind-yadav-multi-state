@@ -51,6 +51,10 @@ public class SecurityConfig {
                 // In production this should sit behind a separate filter chain
                 // with mTLS or a dedicated MCP-only bearer token.
                 .requestMatchers("/sse", "/mcp/**").permitAll()
+                // GraphQL + GraphiQL UI + SDL endpoint left open for local exploration.
+                // The same production caveat as the MCP block applies: in production these
+                // should sit behind a separate filter chain with a real bearer token.
+                .requestMatchers("/graphql", "/graphiql/**", "/graphql/schema").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             .oauth2ResourceServer(o -> o.jwt(jwt -> jwt

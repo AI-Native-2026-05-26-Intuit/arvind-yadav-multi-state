@@ -19,4 +19,12 @@ public interface TenantReadModelRepository extends MongoRepository<TenantReadMod
      * secondary lookup by state stays index-driven rather than a collection scan.
      */
     List<TenantReadModel> findByPrimaryState(String primaryState);
+
+    /**
+     * Most-recently-projected tenants first. Used by the GraphQL
+     * {@code latestTenants} query. Sort is on {@code capturedAt}; the field is
+     * unindexed today, which is acceptable because the GraphQL query caps the
+     * result via {@code limit} and the collection is small in this curriculum.
+     */
+    List<TenantReadModel> findAllByOrderByCapturedAtDesc(org.springframework.data.domain.Pageable pageable);
 }
