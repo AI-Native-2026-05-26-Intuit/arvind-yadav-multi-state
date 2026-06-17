@@ -1,0 +1,9 @@
+{
+  "_comment": "Sample Claude Code MCP client registration for the multistate-mcp server. The server is configured for SSE transport (spring.ai.mcp.server.transport: SSE in application.yml), so we point Claude Code at the running app's /sse endpoint rather than launching a fresh JVM per session. Start the server first: ./gradlew bootRun.",
+  "mcpServers": {
+    "multistate-mcp": {
+      "type": "sse",
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}

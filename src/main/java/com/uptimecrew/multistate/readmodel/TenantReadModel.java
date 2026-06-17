@@ -1,5 +1,6 @@
 package com.uptimecrew.multistate.readmodel;
 
+import com.uptimecrew.multistate.consumer.AllocationCreatedEvent;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -52,6 +53,18 @@ public class TenantReadModel implements Serializable {
 
     public TenantReadModel() {}                                 // required by Spring Data Mongo
 
+    /**
+     * Shell-document constructor used by the consumer when an event arrives for
+     * an aggregate that isn't in Mongo yet (read model still warming up, or the
+     * Mongo write-through in {@code AllocationService} hasn't run on this node).
+     * Scalar fields are filled in by {@link #applyEvent(AllocationCreatedEvent)};
+     * we don't enforce non-null on construction so the document can exist
+     * between {@code new TenantReadModel(id)} and the next save.
+     */
+    public TenantReadModel(String id) {
+        this.id = Objects.requireNonNull(id, "id");
+    }
+
     public TenantReadModel(String id,
                            String primaryState,
                            String legalName,
@@ -64,6 +77,30 @@ public class TenantReadModel implements Serializable {
         this.status = Objects.requireNonNull(status, "status");
         this.capturedAt = Objects.requireNonNull(capturedAt, "capturedAt");
         this.allocations = new ArrayList<>(Objects.requireNonNull(allocations, "allocations"));
+    }
+
+    /**
+     * Idempotently project an {@link AllocationCreatedEvent} onto this document.
+     * Applying the same event twice produces the same final state (last-write-
+     * wins on a deterministic input), so at-least-once redelivery from Kafka is
+     * safe. {@code legalName} is not in the event payload — preserved if already
+     * set, otherwise left null until the producer-side Mongo write-through fills
+     * it in.
+     */
+    public void applyEvent(AllocationCreatedEvent event) {
+        Objects.requireNonNull(event, "event");
+        if (!Objects.equals(this.id, event.aggregateId())) {
+            throw new IllegalArgumentException(
+                "event aggregateId %s does not match document id %s"
+                    .formatted(event.aggregateId(), this.id));
+        }
+        this.primaryState = event.primaryJurisdictionCode();
+        this.status = event.status();
+        this.capturedAt = event.occurredAt();
+        // legalName + embedded allocations stay as-is: the event payload doesn't
+        // carry them. The producer-side write-through in AllocationService
+        // populates both with the full picture; this consumer just keeps the
+        // scalar projection in sync when redelivery happens.
     }
 
     public String getId()                          { return id; }
