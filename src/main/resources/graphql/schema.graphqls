@@ -1,0 +1,26 @@
+type Query {
+    tenant(id: ID!): Tenant
+    latestTenants(limit: Int = 10): [Tenant!]!
+}
+
+type Mutation {
+    summarizeTenant(id: ID!): TenantSummary!
+}
+
+type Tenant {
+    id: ID!
+    lines: [LineItem!]!
+}
+
+type LineItem {
+    id: ID!
+    description: String!
+    amount: Float!
+}
+
+type TenantSummary {
+    primaryState: String!
+    totalAllocation: Float!
+    stateCount: Int!
+    complianceTier: String!
+}

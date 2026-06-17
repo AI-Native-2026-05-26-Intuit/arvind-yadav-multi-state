@@ -16,6 +16,8 @@ java {
 
 repositories {
     mavenCentral()
+    // Spring AI milestones (e.g. 1.0.0-M5) aren't on Maven Central yet.
+    maven { url 'https://repo.spring.io/milestone' }
 }
 
 dependencies {
@@ -94,6 +96,17 @@ dependencies {
     // starter version is required because Spring AI is not in the Boot BOM.
     // If 1.0.0-M5 is unavailable, fall back to the latest 1.0.0-Mx milestone
     // matching your Spring Boot version, or use io.modelcontextprotocol:mcp-server.
+
+    // ── W3 D4: GraphQL + Spring AI structured outputs ──────────────────
+    implementation 'org.springframework.boot:spring-boot-starter-graphql'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'   // for the GraphiQL UI only
+    // Match the version of the existing W3 D2 MCP starter so both Spring AI
+    // modules resolve from the same release line. 1.0.0-M5 isn't on Central; 2.0.0
+    // is the released line that matches our `spring-ai-starter-mcp-server-webmvc`.
+    implementation 'org.springframework.ai:spring-ai-starter-model-anthropic:2.0.0'
+    implementation 'com.networknt:json-schema-validator:1.5.1'
+
+    testImplementation 'org.springframework.graphql:spring-graphql-test'
 }
 
 test {

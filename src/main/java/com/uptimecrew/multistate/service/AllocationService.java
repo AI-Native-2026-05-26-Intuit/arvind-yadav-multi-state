@@ -18,6 +18,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -223,5 +224,18 @@ public class AllocationService {
             e.getStatus(),
             Instant.now(),                      // capturedAt — rebuilt now
             List.of()));
+    }
+
+    /**
+     * Returns the most-recently-projected tenant read-model documents, newest
+     * first, capped at {@code limit}. Backs the GraphQL {@code latestTenants}
+     * query. Reads straight from the Mongo read model — no cache-aside here,
+     * since the query is exploratory and ordering changes with every write.
+     */
+    public List<TenantReadModel> findLatest(int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive: " + limit);
+        }
+        return readModelRepository.findAllByOrderByCapturedAtDesc(PageRequest.of(0, limit));
     }
 }
