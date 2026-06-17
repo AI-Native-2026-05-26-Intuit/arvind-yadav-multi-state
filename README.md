@@ -26,6 +26,15 @@ The domain core is now packaged as a **Spring Boot 4** application: the service 
 - **MCP server.** [TenantMcpServer](src/main/java/com/uptimecrew/multistate/mcp/TenantMcpServer.java) exposes one `@Tool` method `lookupTenant(String id)` over MCP. [McpToolConfig](src/main/java/com/uptimecrew/multistate/mcp/McpToolConfig.java) bridges it to the MCP server with a `MethodToolCallbackProvider` bean (Spring AI 2.0's annotation-scanner targets `@McpTool`, a different annotation, so an explicit provider is required). `application.yml` sets `spring.ai.mcp.server.type: SYNC` and `transport: SSE`; the running app publishes the tool at `http://localhost:8080/sse` and clients message it at the session-scoped `/mcp/message` endpoint. [mcp.json](mcp.json) at the repo root is the SSE-mode Claude Code registration. `SecurityConfig` permits `/sse` and `/mcp/**` for local development — production MCP exposure should sit behind a dedicated filter chain (mTLS or MCP-only bearer).
 - **Event-flow IT.** [TenantEventFlowIT](src/test/java/com/uptimecrew/multistate/TenantEventFlowIT.java) boots the full context against four real containers (Postgres + Mongo + Redis via `@ServiceConnection`, Kafka via `@DynamicPropertySource` because Boot 4.0.6's `spring-boot-testcontainers` jar ships no Kafka `ConnectionDetailsFactory`) and verifies the round trip: a domain write surfaces on `tenants.events` keyed by the aggregate id, a directly-produced event materialises in Mongo via the listener, and a malformed payload retries three times and lands on `tenants.events.DLT`.
 
+**Week 3 Day 4:** put a GraphQL read+mutate surface in front of the tenant read model and bound a Spring AI structured-output mutation to a hand-written JSON Schema.
+
+- **GraphQL endpoint + GraphiQL.** [schema.graphqls](src/main/resources/graphql/schema.graphqls) declares the SDL — `Tenant { id, lines: [LineItem!]! }`, two queries (`tenant(id)`, `latestTenants(limit)`), and one mutation (`summarizeTenant(id)`). [TenantGraphQlController](src/main/java/com/uptimecrew/multistate/graphql/TenantGraphQlController.java) resolves the queries by delegating to `AllocationService.findById(...)` and a new `findLatest(int)` method backed by `TenantReadModelRepository.findAllByOrderByCapturedAtDesc(Pageable)`. `application.yml` enables `spring.graphql.graphiql` and the `schema.printer`, so the in-browser GraphiQL is served at `/graphiql` and the live SDL at `/graphql/schema`. `SecurityConfig` permits `/graphql`, `/graphiql/**`, and `/graphql/schema` for local exploration (same production caveat as the MCP SSE block — these should sit behind a dedicated filter chain in production). `spring-boot-starter-webflux` rides along solely because Spring for GraphQL's GraphiQL UI uses reactive routing internally; the rest of the app stays on Spring MVC.
+- **@BatchMapping for `Tenant.lines`.** [LineItem](src/main/java/com/uptimecrew/multistate/graphql/LineItem.java) is the GraphQL projection of `TenantReadModel.EmbeddedAllocation` (jurisdiction code → `description`, scale-2 `BigDecimal` → `Float`). `AllocationService.loadLineItemsByParent(List<TenantReadModel>)` groups the embedded children into a `Map<TenantReadModel, List<LineItem>>` in one pass, and the controller exposes it via `@BatchMapping(typeName = "Tenant", field = "lines")`. Spring for GraphQL invokes the resolver ONCE per query generation regardless of how many parents are returned, replacing the per-parent invocation loop that would otherwise run for `{ latestTenants(limit: 50) { lines { ... } } }`. Because the read model embeds allocations inline in the same Mongo document, this fixes the in-code N+1 (one mapping call per query) while issuing zero extra DB reads — the parent fetch already brought the children along.
+- **Structured-output mutation + two-stage validation.** [TenantSummary](src/main/java/com/uptimecrew/multistate/graphql/TenantSummary.java) is the record bound by Spring AI's `.entity(TenantSummary.class)` converter. [LlmSummaryService](src/main/java/com/uptimecrew/multistate/llm/LlmSummaryService.java) injects `ChatClient.Builder`, fetches the tenant document, prompts the model, and **re-validates** the returned record against [TenantSummary.schema.json](src/main/resources/schemas/TenantSummary.schema.json) (JSON Schema 2020-12, `additionalProperties: false`, all four fields `required`, `stateCount minimum: 0`). Why both stages? The Jackson binding only enforces what the record captures (field names + Java types); the JSON Schema also enforces absent/extra fields and value constraints — a future model release that drifts the shape fails loudly here instead of silently shipping a malformed summary. Anthropic config (`spring.ai.anthropic.api-key`, `claude-sonnet-4-5`, `max-tokens: 1024`) lives in `application.yml`.
+- **Deviation — Spring AI Anthropic starter version.** The W3 D4 assignment specifies `spring-ai-starter-model-anthropic:1.0.0-M5`. That coordinate isn't on Maven Central — the released line that matches our existing `spring-ai-starter-mcp-server-webmvc:2.0.0` is `2.0.0`, so both Spring AI modules resolve from the same release.
+- **Deviation — networknt JSON Schema validator version (and Jackson generation).** The reference snippet uses the 1.x API (`JsonSchemaFactory`, `SpecVersion.VersionFlag`). The MCP server's `mcp-json-jackson3` module pulls Jackson 3 (`tools.jackson.databind.*`) and calls `Schema.validate(tools.jackson.databind.JsonNode)` on startup, which only exists in **networknt 3.x**. The pinned `1.5.1` fails `McpSyncServer` construction with `NoClassDefFoundError: com.networknt.schema.dialect.Dialects`; `2.x` exposes only the Jackson 2 overload and fails `NoSuchMethodError`. We use `com.networknt:json-schema-validator:3.0.4` and the 3.x API (`SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)` → `Schema.validate(node) → List<Error>`). The candidate is converted with a local Jackson 3 `JsonMapper` rather than the Spring-managed Jackson 2 `ObjectMapper` — used only for the schema-validation conversion, never elsewhere in the app.
+- **GraphQL IT.** [TenantGraphQlIT](src/test/java/com/uptimecrew/multistate/TenantGraphQlIT.java) is a `@SpringBootTest` + `@AutoConfigureGraphQlTester` (Boot 4 moved the auto-config out of `spring-boot-starter-test` into the per-tech `spring-boot-graphql-test` module — added explicitly) running against Postgres + Mongo + Redis containers via `@ServiceConnection`. `@BeforeEach` seeds five read-model documents (one with two embedded allocations) so `tenant("seeded-id-1")` and `latestTenants(limit: 5)` resolve against real data. A `@TestConfiguration` supplies a `@Primary` `ChatClient.Builder` built with Mockito `RETURNS_DEEP_STUBS` that returns a fixed `TenantSummary` from `.entity(TenantSummary.class)` — Anthropic is never called, but `LlmSummaryService`'s own JSON Schema re-validation still runs end-to-end. The third test re-runs the schema validator over the mutation response and asserts no errors.
+
 ## Build & test
 
 ```bash
@@ -65,12 +74,15 @@ The project is bootstrapped as a Spring Boot 4 application (Boot + dependency-ma
 
 ## HTTP API
 
-All `/api/v1/**` routes require a valid Bearer JWT and authority `SCOPE_tenants.read` + role `TENANT_READER`. `/actuator/health`, `/v3/api-docs/**`, and `/swagger-ui/**` are unauthenticated. The session is stateless; CSRF is disabled because there is no cookie-based auth surface.
+All `/api/v1/**` routes require a valid Bearer JWT and authority `SCOPE_tenants.read` + role `TENANT_READER`. `/actuator/health`, `/v3/api-docs/**`, `/swagger-ui/**`, `/graphql`, `/graphiql/**`, and `/graphql/schema` are unauthenticated. The session is stateless; CSRF is disabled because there is no cookie-based auth surface.
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/tenants/{id}` | JWT + `SCOPE_tenants.read` + `ROLE_TENANT_READER` | Returns the [TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java) from the Redis-cached Mongo read side. 404 if not found. |
 | `POST` | `/api/v1/tenants/{id}/summary` | Same as above + `Idempotency-Key` UUID header | Stubbed LLM-style summary. Body includes `displayName` resolved from the identity service (degraded value if the breaker is OPEN). Rate-limited to **10 requests / minute per JWT subject**; over-limit returns `429` with `Retry-After: 60`. `400` on missing/non-UUID header; `409` on concurrent retry with the same key while the original is still in flight. |
+| `POST` | `/graphql` | none (local) | GraphQL endpoint. Queries: `tenant(id)`, `latestTenants(limit: Int = 10)`. Mutation: `summarizeTenant(id)` (Spring AI Anthropic → JSON-Schema-validated `TenantSummary`). `Tenant.lines` is resolved via `@BatchMapping` (single call per generation). |
+| `GET` | `/graphiql` | none (local) | In-browser GraphiQL UI for exploring the SDL and running queries. |
+| `GET` | `/graphql/schema` | none (local) | Printed SDL for inspection / tooling. |
 | `GET` | `/v3/api-docs` | none | OpenAPI 3.1 JSON. |
 | `GET` | `/swagger-ui.html` | none | Swagger UI. |
 | `GET` | `/actuator/health` | none | Liveness probe. |
@@ -141,6 +153,7 @@ Integration tests (`*IT` suffix) boot a real context or container:
 - [TenantSecurityIT](src/test/java/com/uptimecrew/multistate/TenantSecurityIT.java) — `@SpringBootTest` + `@AutoConfigureMockMvc` with real Postgres, Mongo and Redis via Testcontainers `@ServiceConnection`. Uses Spring Security's `jwt()` request post-processor to mint test JWTs and asserts the full authentication / authorization / rate-limit contract: `200` with the right scope+role, `401` anonymous, `403` when the role is missing, and `429` + `Retry-After: 60` after 10 `POST /summary` calls (with unique `Idempotency-Key` headers) for one subject.
 - [IdentityClientCircuitBreakerIT](src/test/java/com/uptimecrew/multistate/contract/IdentityClientCircuitBreakerIT.java) — `@SpringBootTest(webEnvironment = RANDOM_PORT)` + `@AutoConfigureMockMvc` with in-process WireMock on port 8090 (matching `identity.base-url`). Covers the identity 200 path, breaker transitioning to OPEN after repeated 5xx with subsequent calls short-circuiting to the fallback (no further WireMock hits), the controller POST returning `200` with `$.displayName`, and `/v3/api-docs` exposing `/api/v1/tenants/{id}` with the `bearer-jwt` scheme. Resets the `identity` breaker `@BeforeEach` so the 500-loop test does not bleed OPEN state into the 200-stub test.
 - [TenantEventFlowIT](src/test/java/com/uptimecrew/multistate/TenantEventFlowIT.java) — four-container `@SpringBootTest` (Postgres + Mongo + Redis + Kafka). Three scenarios: a domain write goes through `AllocationService.allocate(...)` and the outbox publisher; a directly-produced JSON event flows through the listener into Mongo; a malformed payload retries 3× via `FixedBackOff(1000ms, 3)` and lands on `tenants.events.DLT`. Postgres/Mongo/Redis are wired via `@ServiceConnection`; Kafka uses `@DynamicPropertySource` because Boot 4.0.6's `spring-boot-testcontainers` jar ships no Kafka `ConnectionDetailsFactory`.
+- [TenantGraphQlIT](src/test/java/com/uptimecrew/multistate/TenantGraphQlIT.java) — `@SpringBootTest` + `@AutoConfigureGraphQlTester` (Postgres + Mongo + Redis containers) exercising the W3 D4 GraphQL surface end-to-end: the `tenant(id)` query against a seeded document, the `latestTenants(limit: 5) { lines { id } }` round (the `@BatchMapping` resolver), and the `summarizeTenant` mutation. A nested `@TestConfiguration` supplies a `@Primary` `ChatClient.Builder` (Mockito `RETURNS_DEEP_STUBS`) returning a fixed `TenantSummary` so Anthropic is never touched, while `LlmSummaryService`'s own JSON Schema re-validation still runs; the test then re-runs the validator over the mutation response to assert no errors.
 
 Every IT that touches the JPA layer also applies `db/V3__event_outbox.sql` in `@BeforeAll` — `EventOutboxEntity` is part of the persistence unit, so Hibernate's `validate` mode requires the table to exist before context refresh.
 
@@ -157,9 +170,13 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 | `implementation` | `io.github.resilience4j:resilience4j-spring-boot3:2.2.0` (`@CircuitBreaker` advisor on the identity wrapper) |
 | `implementation` | `org.springframework.kafka:spring-kafka` (outbox publisher + `@KafkaListener` consumer + DLT) |
 | `implementation` | `org.springframework.ai:spring-ai-starter-mcp-server-webmvc:2.0.0` (MCP SSE server hosting the `lookupTenant` `@Tool`) |
+| `implementation` | `org.springframework.boot:spring-boot-starter-graphql` + `spring-boot-starter-webflux` (GraphQL endpoint + GraphiQL UI's reactive routing) |
+| `implementation` | `org.springframework.ai:spring-ai-starter-model-anthropic:2.0.0` (Anthropic `ChatClient` for the `summarizeTenant` mutation) |
+| `implementation` | `com.networknt:json-schema-validator:3.0.4` (JSON Schema re-validation of LLM output; 3.x required for Jackson 3 compat with `mcp-json-jackson3`) |
 | `testImplementation` | `org.springframework.security:spring-security-test` (MockMvc `jwt()` post-processor) |
 | `testImplementation` | `org.wiremock:wiremock-standalone:3.9.1` (contract test for the identity client) |
 | `testImplementation` | `org.springframework.kafka:spring-kafka-test`, `org.testcontainers:kafka:1.20.4`, `org.awaitility:awaitility:4.2.2` (event-flow IT) |
+| `testImplementation` | `org.springframework.graphql:spring-graphql-test`, `org.springframework.boot:spring-boot-graphql-test` (GraphQL IT; the Boot 4 test slice that ships `@AutoConfigureGraphQlTester`) |
 | `runtimeOnly` | `org.springframework.boot:spring-boot-starter-jdbc` (HikariCP + `DataSource`), `org.postgresql:postgresql:42.7.3` |
 | `implementation` | `org.slf4j:slf4j-api:2.0.12` |
 | `runtimeOnly` | `ch.qos.logback:logback-classic:1.5.6` |
@@ -179,6 +196,9 @@ src/main/java/com/uptimecrew/multistate/
     clients/          # declarative identity HTTP client + IdentityService (breaker wrapper)
     config/           # OpenApiConfig (OpenAPI 3.1 bean + bearer-jwt scheme)
     consumer/         # @KafkaListener (re-projection) + DLT error handler + event record
+    graphql/          # SDL-backed @Controller (queries + @BatchMapping + @MutationMapping),
+                      # LineItem + TenantSummary projections
+    llm/              # LlmSummaryService (Spring AI ChatClient + JSON Schema re-validation)
     mcp/              # @Tool lookupTenant + MethodToolCallbackProvider bridge
     outbox/           # EventOutboxEntity/Repository, OutboxPublisher, KafkaProducerConfig
     security/         # SecurityFilterChain + JWT converter + RateLimitFilter
@@ -191,12 +211,19 @@ src/main/java/com/uptimecrew/multistate/
 src/main/resources/
     application.yml   # local + test profiles, datasource, Actuator, logging,
                       # springdoc paths, identity.base-url, resilience4j breaker,
-                      # kafka producer/consumer, spring.ai.mcp.server (SYNC + SSE)
+                      # kafka producer/consumer, spring.ai.mcp.server (SYNC + SSE),
+                      # spring.graphql.{graphiql, schema.printer},
+                      # spring.ai.anthropic (api-key, model, max-tokens)
+    graphql/
+        schema.graphqls               # SDL: Tenant, LineItem, TenantSummary; queries + mutation
+    schemas/
+        TenantSummary.schema.json     # JSON Schema 2020-12 re-validated against LLM output
 src/test/java/com/uptimecrew/multistate/
     ApplicationContextLoadIT.java     # @SpringBootTest context + bean wiring
     TenantPolyglotIT.java             # Postgres + Mongo + Redis end-to-end
     TenantSecurityIT.java             # JWT + role + rate-limit MockMvc tests
     TenantEventFlowIT.java            # 4-container: outbox -> Kafka -> consumer -> Mongo + DLT
+    TenantGraphQlIT.java              # GraphQL queries + @BatchMapping + structured-output mutation
     contract/
         IdentityClientCircuitBreakerIT.java  # WireMock + breaker + OpenAPI assertion
     model/
