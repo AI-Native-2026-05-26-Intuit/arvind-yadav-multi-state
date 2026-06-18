@@ -51,6 +51,9 @@ public class TenantReadModel implements Serializable {
 
     private List<EmbeddedAllocation> allocations = new ArrayList<>();   // embedded, NOT a foreign reference
 
+    @Indexed                                                    // multikey index over the embedded array → findByTagsContaining is index-backed
+    private List<String> tags = new ArrayList<>();              // free-form labels — never null, default empty
+
     public TenantReadModel() {}                                 // required by Spring Data Mongo
 
     /**
@@ -71,12 +74,23 @@ public class TenantReadModel implements Serializable {
                            String status,
                            Instant capturedAt,
                            List<EmbeddedAllocation> allocations) {
+        this(id, primaryState, legalName, status, capturedAt, allocations, List.of());
+    }
+
+    public TenantReadModel(String id,
+                           String primaryState,
+                           String legalName,
+                           String status,
+                           Instant capturedAt,
+                           List<EmbeddedAllocation> allocations,
+                           List<String> tags) {
         this.id = Objects.requireNonNull(id, "id");
         this.primaryState = Objects.requireNonNull(primaryState, "primaryState");
         this.legalName = Objects.requireNonNull(legalName, "legalName");
         this.status = Objects.requireNonNull(status, "status");
         this.capturedAt = Objects.requireNonNull(capturedAt, "capturedAt");
         this.allocations = new ArrayList<>(Objects.requireNonNull(allocations, "allocations"));
+        this.tags = new ArrayList<>(Objects.requireNonNull(tags, "tags"));
     }
 
     /**
@@ -109,6 +123,11 @@ public class TenantReadModel implements Serializable {
     public String getStatus()                      { return status; }
     public Instant getCapturedAt()                 { return capturedAt; }
     public List<EmbeddedAllocation> getAllocations() { return allocations; }
+    public List<String> getTags()                  { return tags == null ? List.of() : tags; }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+    }
 
     // Identity on the shared primary key only — never on the embedded collection.
     @Override public boolean equals(Object o) { return o instanceof TenantReadModel other && Objects.equals(id, other.id); }

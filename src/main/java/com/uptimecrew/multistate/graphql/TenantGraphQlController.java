@@ -2,6 +2,7 @@ package com.uptimecrew.multistate.graphql;
 
 import com.uptimecrew.multistate.llm.LlmSummaryService;
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
+import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import com.uptimecrew.multistate.service.AllocationService;
 import java.util.List;
 import java.util.Map;
@@ -28,10 +29,14 @@ public class TenantGraphQlController {
 
     private final AllocationService service;
     private final LlmSummaryService llmSummary;
+    private final TenantReadModelRepository tenants;
 
-    public TenantGraphQlController(AllocationService service, LlmSummaryService llmSummary) {
+    public TenantGraphQlController(AllocationService service,
+                                   LlmSummaryService llmSummary,
+                                   TenantReadModelRepository tenants) {
         this.service = service;
         this.llmSummary = llmSummary;
+        this.tenants = tenants;
     }
 
     @QueryMapping
@@ -43,6 +48,12 @@ public class TenantGraphQlController {
     @QueryMapping
     public List<TenantReadModel> latestTenants(@Argument Integer limit) {
         return service.findLatest(limit == null ? 10 : limit);
+    }
+
+    @QueryMapping
+    public List<TenantReadModel> tenantsByTag(@Argument String tag) {
+        LOG.info("graphql query tenantsByTag tag={}", tag);
+        return tenants.findByTagsContaining(tag);
     }
 
     @MutationMapping

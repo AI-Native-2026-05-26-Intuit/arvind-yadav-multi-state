@@ -27,4 +27,10 @@ public interface TenantReadModelRepository extends MongoRepository<TenantReadMod
      * result via {@code limit} and the collection is small in this curriculum.
      */
     List<TenantReadModel> findAllByOrderByCapturedAtDesc(org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Derived query — Spring Data Mongo turns this into a {@code tags: <tag>}
+     * match (effectively {@code $elemMatch}) on the embedded array.
+     */
+    List<TenantReadModel> findByTagsContaining(String tag);
 }
