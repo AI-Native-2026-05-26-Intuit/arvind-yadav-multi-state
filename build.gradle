@@ -119,6 +119,23 @@ dependencies {
     // @AutoConfigureGraphQlTester (the auto-configuration is NOT in
     // spring-boot-starter-test, unlike Boot 3).
     testImplementation 'org.springframework.boot:spring-boot-graphql-test'
+
+    // ── W3 D5: OpenTelemetry tracing ───────────────────────────────────
+    // opentelemetry-spring-boot-starter wires the OTel SDK + autoconfiguration
+    // for the OTLP exporter, and pulls in instrumentation for Spring MVC,
+    // JDBC, the WebClient, and the Apache HTTP client. The exporter-otlp
+    // artifact ships the protobuf encoder; protocol selection happens via
+    // otel.exporter.otlp.protocol in application.yml. The spring-kafka-2.7
+    // instrumentation is the -alpha line and is NOT bundled by the starter —
+    // Kafka is the most common trace-continuity break, so it must be added
+    // explicitly. Sleuth is intentionally absent from the classpath; running
+    // it alongside the OTel starter double-instruments every request.
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.10.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-kafka-2.7:2.10.0-alpha'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:2.10.0'
+
+    testImplementation 'io.opentelemetry:opentelemetry-sdk-testing'
 }
 
 test {

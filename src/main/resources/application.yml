@@ -165,6 +165,34 @@ resilience4j:
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
 
+# ── W3 D5: OpenTelemetry tracing ───────────────────────────────────────
+# Top-level `otel:` keys are read by the opentelemetry-spring-boot-starter
+# autoconfiguration (NOT under `spring:`). The OTLP endpoint here matches
+# the local Jaeger all-in-one's OTLP/HTTP port:
+#   docker run -d --name jaeger \
+#     -e COLLECTOR_OTLP_ENABLED=true \
+#     -p 16686:16686 -p 4317:4317 -p 4318:4318 \
+#     jaegertracing/all-in-one:1.60
+# Jaeger UI: http://localhost:16686
+#
+# Sampler `always_on` is fine for local dev — flip to
+# `parentbased_traceidratio` in prod and pin a ratio via
+# otel.traces.sampler.arg.
+otel:
+  service:
+    name: multistate-service
+  exporter:
+    otlp:
+      endpoint: http://localhost:4318
+      protocol: http/protobuf
+  traces:
+    sampler: always_on
+  instrumentation:
+    spring-kafka:
+      enabled: true
+    kafka:
+      enabled: true
+
 ---
 spring:
   config:
