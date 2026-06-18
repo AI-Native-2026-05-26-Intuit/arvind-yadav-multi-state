@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.support.ProducerListener;
 
 /**
  * Explicit Kafka producer wiring for the outbox publisher.
@@ -39,7 +40,15 @@ public class KafkaProducerConfig {
     }
 
     @Bean
-    public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> outboxProducerFactory) {
-        return new KafkaTemplate<>(outboxProducerFactory);
+    public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> outboxProducerFactory,
+                                                       ProducerListener<String, String> producerListener) {
+        // Spring Kafka doesn't auto-attach ProducerListener beans to user-built
+        // KafkaTemplates — wire it explicitly so the traceparent smoke-test
+        // listener actually fires on every outbox send. The OTel
+        // ProducerInterceptor injects the W3C header before the send completes,
+        // so the listener sees it.
+        KafkaTemplate<String, String> template = new KafkaTemplate<>(outboxProducerFactory);
+        template.setProducerListener(producerListener);
+        return template;
     }
 }
