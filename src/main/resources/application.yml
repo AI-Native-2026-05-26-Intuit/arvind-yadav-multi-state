@@ -129,6 +129,27 @@ spring:
           model: claude-sonnet-4-5
           max-tokens: 1024
 
+# OpenTelemetry config — note the `otel:` block lives at the YAML root, NOT under
+# `spring:`. OTel's autoconfigure reads top-level `otel.*` properties; nesting it
+# under `spring.*` silently disables every setting and falls back to env defaults.
+otel:
+  service:
+    name: multistate-service
+  exporter:
+    otlp:
+      endpoint: http://localhost:4318     # OTLP/HTTP default; matches the Jaeger all-in-one container
+      protocol: http/protobuf
+  traces:
+    sampler: always_on                    # dev default; flip to parentbased_traceidratio in prod
+  metrics:
+    exporter: none                        # Jaeger all-in-one doesn't accept OTLP metrics; skip the 404 noise
+  logs:
+    exporter: none                        # ditto for logs
+  instrumentation:
+    spring-kafka:
+      enabled: true
+    kafka:
+      enabled: true
 
 
 management:

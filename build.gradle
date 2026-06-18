@@ -20,6 +20,18 @@ repositories {
     maven { url 'https://repo.spring.io/milestone' }
 }
 
+// io.spring.dependency-management overrides regular platforms with the
+// Spring Boot BOM, which pins opentelemetry-api to 1.55.0 — too old for
+// instrumentation-api 2.28.1 (calls GlobalOpenTelemetry.getOrNoop() added
+// in 1.59). Import the OTel BOM through the plugin itself so its versions
+// win over Boot's. Pin to 1.62.0: 1.63.0 removed io.opentelemetry.api.internal.InstrumentationUtil,
+// still referenced by opentelemetry-jdbc 2.28.1-alpha's SpanSuppressors.
+dependencyManagement {
+    imports {
+        mavenBom 'io.opentelemetry:opentelemetry-bom:1.62.0'
+    }
+}
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-web'      // brings the embedded Tomcat for Actuator
@@ -119,6 +131,44 @@ dependencies {
     // @AutoConfigureGraphQlTester (the auto-configuration is NOT in
     // spring-boot-starter-test, unlike Boot 3).
     testImplementation 'org.springframework.boot:spring-boot-graphql-test'
+
+    // Add to dependencies { ... } in build.gradle, alongside your W3 D1-D4 lines.
+    // OTel 2.10.0's Spring Boot starter is built against Boot 3 and crashes
+    // on Boot 4 (DefaultKafkaProducerFactoryCustomizer / MongoClientSettingsBuilderCustomizer
+    // / DataSourceAutoConfiguration / RestTemplateCustomizer were all moved or
+    // removed). 2.28.x ships dedicated *-SpringBoot4AutoConfiguration variants
+    // gated on Boot-4-only classes, so the Boot-3 configs are skipped cleanly
+    // by string-based @ConditionalOnClass before reflective introspection.
+    //
+    // The OTel BOM (imported above via the dependency-management plugin) pins
+    // the SDK to 1.62.0 so instrumentation-api 2.28.1's call to
+    // GlobalOpenTelemetry.getOrNoop() resolves — Spring Boot's BOM would
+    // otherwise hold the SDK at 1.55.0 (predates the method).
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.28.1'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-kafka-2.7:2.28.1-alpha'
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:2.28.1'
+
+    testImplementation 'io.opentelemetry:opentelemetry-sdk-testing'
+
+    // Notes:
+    //  * opentelemetry-spring-boot-starter wires the OTel SDK + autoconfiguration
+    //    for the OTLP exporter, and pulls in instrumentation modules for the
+    //    Spring MVC server, JDBC, the WebClient, and the Apache HTTP client.
+    //  * opentelemetry-exporter-otlp ships the protobuf encoder; the starter
+    //    selects HTTP/protobuf or gRPC via the otel.exporter.otlp.protocol
+    //    property below.
+    //  * The spring-kafka instrumentation is the -alpha artifact for the 2.7
+    //    contract and is NOT included in the boot starter — Kafka is the most
+    //    common trace-continuity break (see Section 9 sticking point #2).
+    //  * NOTE: there is NO org.testcontainers:jaegertracing artifact. Run
+    //    Jaeger in tests as a GenericContainer (see the reference test
+    //    fixture in Task 4 / Section 9).
+    //
+    // REMOVE if present:
+    //   implementation 'org.springframework.cloud:spring-cloud-starter-sleuth'
+    // Sleuth was deprecated in Spring Boot 3; running it alongside the OTel
+    // starter double-instruments every request — see Section 9 sticking point #1.
 }
 
 test {
