@@ -1,0 +1,10 @@
+{
+  "id": "stub-id-1",
+  "primaryState": "CA",
+  "stateCount": 5,
+  "totalAllocation": "12500.00",
+  "lines": [
+    { "id": "line-1", "amount": "100.00" },
+    { "id": "line-2", "amount": "250.00" }
+  ]
+}
