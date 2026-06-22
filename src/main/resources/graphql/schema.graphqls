@@ -1,6 +1,7 @@
 type Query {
     tenant(id: ID!): Tenant
     latestTenants(limit: Int = 10): [Tenant!]!
+    tenantsByTag(tag: String!): [Tenant!]!
 }
 
 type Mutation {
@@ -10,6 +11,7 @@ type Mutation {
 type Tenant {
     id: ID!
     lines: [LineItem!]!
+    tags: [String!]!
 }
 
 type LineItem {

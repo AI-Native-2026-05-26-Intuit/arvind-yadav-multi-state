@@ -187,8 +187,11 @@ class TenantGraphQlIT {
     /**
      * Replaces the auto-configured {@code ChatClient.Builder} with one that
      * shortcuts the entire fluent chain through deep stubs and returns the
-     * fixed {@link #STUB_SUMMARY} when {@code .entity(TenantSummary.class)} is
-     * called. The Anthropic HTTP client is never touched.
+     * fixed {@link #STUB_SUMMARY} when {@code .responseEntity(TenantSummary.class)}
+     * is called. {@code LlmSummaryService} switched from {@code .entity(...)} to
+     * {@code .responseEntity(...)} so it can read token usage off the
+     * {@code ChatResponse} for the manual OTel span — the stub follows.
+     * The Anthropic HTTP client is never touched.
      */
     @TestConfiguration
     static class StubChatClientConfig {
@@ -196,8 +199,19 @@ class TenantGraphQlIT {
         @Primary
         ChatClient.Builder stubChatClientBuilder() {
             ChatClient.Builder builder = mock(ChatClient.Builder.class, RETURNS_DEEP_STUBS);
+            org.springframework.ai.chat.metadata.Usage usage =
+                    new org.springframework.ai.chat.metadata.DefaultUsage(1, 1, 2);
+            org.springframework.ai.chat.metadata.ChatResponseMetadata metadata =
+                    org.springframework.ai.chat.metadata.ChatResponseMetadata.builder()
+                            .usage(usage)
+                            .build();
+            org.springframework.ai.chat.model.ChatResponse chatResponse =
+                    new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(), metadata);
+            org.springframework.ai.chat.client.ResponseEntity<
+                    org.springframework.ai.chat.model.ChatResponse, TenantSummary> stubbed =
+                    new org.springframework.ai.chat.client.ResponseEntity<>(chatResponse, STUB_SUMMARY);
             when(builder.build().prompt().user(any(String.class)).call()
-                    .entity(TenantSummary.class)).thenReturn(STUB_SUMMARY);
+                    .responseEntity(TenantSummary.class)).thenReturn(stubbed);
             return builder;
         }
     }
