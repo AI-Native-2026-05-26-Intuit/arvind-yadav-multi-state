@@ -1,73 +1,61 @@
-# React + TypeScript + Vite
+# multistate-web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite frontend for the UptimeCrew Multi-State project. Renders a tenant detail view backed (for now) by a stub fetch hook, and exercises React's "lift state up" pattern between two sibling components (`ThresholdSlider` writes, `ThresholdReadout` reads).
 
-Currently, two official plugins are available:
+The Spring Boot backend lives at the repo root; see the [root README](../README.md) for the broader project context and the W4 D1 entry for what this app is for.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Requirements
 
-## React Compiler
+- Node.js 20+ (CI runs on `node-version: 20`)
+- npm (uses the checked-in `package-lock.json`)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Install
 
-## Expanding the ESLint configuration
+From this directory:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm ci
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Scripts
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the Vite dev server with HMR (default: `http://localhost:5173`). |
+| `npm run build` | Type-check (`tsc --noEmit`) then produce a production build in `dist/`. |
+| `npm run preview` | Serve the built `dist/` locally for a smoke check. |
+| `npm run lint` | ESLint 9 flat config across the project. |
+| `npm run typecheck` | TypeScript no-emit pass. |
+| `npm test` | Run Vitest + Testing Library suite once (non-watch). |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Project layout
+
 ```
+multistate-web/
+  src/
+    main.tsx                       # React 19 root, mounts <App />
+    App.tsx                        # renders <TenantDetailPage />
+    pages/
+      TenantDetailPage.tsx         # owns `threshold` state, fetches tenant via useTenant
+    components/
+      ThresholdSlider.tsx          # controlled input — writes threshold via onChange
+      ThresholdReadout.tsx         # read-only display — reads threshold via value
+    hooks/
+      useTenant.ts                 # stub fetch hook returning { data, loading, error }
+    types/
+      tenant.ts                    # TenantViewModel + LineItem types
+    test/
+      TenantDetailPage.test.tsx    # Vitest + Testing Library: loading/error/data/threshold
+  eslint.config.js                 # ESLint 9 flat config
+  vite.config.ts                   # Vite (React plugin)
+  vitest.config.ts                 # Vitest + jsdom environment
+  tsconfig.json
+```
+
+## State pattern
+
+`threshold` lives on `TenantDetailPage`, **not** on either child. `ThresholdSlider` calls `onChange` with the next value; `ThresholdReadout` receives the current value via `value`. Adding a third consumer (e.g. a histogram) means adding another sibling reading `threshold` from the page — neither slider nor readout changes.
+
+## CI
+
+[`/.github/workflows/web-ci.yml`](../.github/workflows/web-ci.yml) runs on PRs that touch `multistate-web/**`: `npm ci` → `lint` → `typecheck` → `test` → `build`. Keep the local script names in sync with the workflow.
