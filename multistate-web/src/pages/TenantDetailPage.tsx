@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { Tenant } from '../types/tenant';
 import { ThresholdSlider } from '../components/ThresholdSlider';
@@ -14,6 +14,10 @@ import {
 export function TenantDetailPage(): ReactElement {
   const [state, dispatch] = useReducer(detailReducer, INITIAL_DETAIL_STATE);
   const debouncedSearch   = useDebouncedSearch();
+  // Throw during render (not in the click handler) so the ErrorBoundary
+  // actually catches it — React boundaries don't catch event-handler throws.
+  const [shouldThrow, setShouldThrow] = useState(false);
+  if (shouldThrow) throw new Error('Dev-triggered render error');
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +44,11 @@ export function TenantDetailPage(): ReactElement {
   return (
     <>
       <FilterStrip />
+      {import.meta.env.DEV && (
+        <button type="button" onClick={() => setShouldThrow(true)}>
+          Trigger error
+        </button>
+      )}
       {debouncedSearch !== '' && (
         <p role="status" aria-label="search-filter">
           filtering for: '{debouncedSearch}'
