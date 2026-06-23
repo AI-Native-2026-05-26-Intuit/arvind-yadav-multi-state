@@ -1,20 +1,32 @@
-import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { useTenant } from '../hooks/useTenant';
 import { ThresholdSlider } from '../components/ThresholdSlider';
 import { ThresholdReadout } from '../components/ThresholdReadout';
+import { FilterStrip } from '../components/FilterStrip';
 
 export function TenantDetailPage(): ReactElement {
-  // (1) `threshold` is owned HERE — the page is the source of truth.
-  //     ThresholdSlider mutates it via the onChange prop; ThresholdReadout
-  //     reads it via the value prop. Two siblings, one source.
-  const [threshold, setThreshold] = useState<number>(50);
-
   const { data, loading, error } = useTenant('stub-id-1');
 
-  if (loading)      return <p>Loading…</p>;
-  if (error)        return <p>Failed to load: {error}</p>;
-  if (data === null) return <p>Not found.</p>;
+  return (
+    <>
+      <FilterStrip />
+      <DetailCard loading={loading} error={error} data={data} />
+    </>
+  );
+}
+
+function DetailCard({
+  loading,
+  error,
+  data,
+}: {
+  readonly loading: boolean;
+  readonly error:   string | null;
+  readonly data:    ReturnType<typeof useTenant>['data'];
+}): ReactElement {
+  if (loading)       return <p>Loading…</p>;
+  if (error !== null) return <p>Failed to load: {error}</p>;
+  if (data === null)  return <p>Not found.</p>;
 
   return (
     <main>
@@ -26,8 +38,8 @@ export function TenantDetailPage(): ReactElement {
       </dl>
 
       <section>
-        <ThresholdSlider  value={threshold} onChange={setThreshold} />
-        <ThresholdReadout value={threshold} />
+        <ThresholdSlider />
+        <ThresholdReadout />
       </section>
 
       <section>

@@ -22,7 +22,9 @@ describe('TenantDetailPage', () => {
   it('renders entity id and a sample field from the mock JSON', async () => {
     render(<TenantDetailPage />);
     await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('stub-id-1'));
-    expect(screen.getByText('CA')).toBeInTheDocument();
+    // 'CA' appears in both the FilterStrip chips and the detail <dl>;
+    // scope the assertion to the term/definition pair to keep it specific.
+    expect(screen.getByText('primaryState').nextElementSibling).toHaveTextContent('CA');
   });
 
   it('updates the readout when the slider is moved (lifted state)', async () => {

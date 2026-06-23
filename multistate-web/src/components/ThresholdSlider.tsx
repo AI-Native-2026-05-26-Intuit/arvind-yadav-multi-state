@@ -1,11 +1,10 @@
 import type { ReactElement } from 'react';
+import { useTenantFilterStore } from '../stores/useTenantFilterStore';
 
-type Props = {
-  readonly value:    number;            // 0..100
-  readonly onChange: (next: number) => void;
-};
+export function ThresholdSlider(): ReactElement {
+  const threshold    = useTenantFilterStore((s) => s.threshold);
+  const setThreshold = useTenantFilterStore((s) => s.setThreshold);
 
-export function ThresholdSlider({ value, onChange }: Props): ReactElement {
   return (
     <label>
       Threshold
@@ -13,8 +12,8 @@ export function ThresholdSlider({ value, onChange }: Props): ReactElement {
         type="range"
         min={0}
         max={100}
-        value={value}
-        onChange={(e) => onChange(Number(e.currentTarget.value))}
+        value={threshold}
+        onChange={(e) => setThreshold(Number(e.currentTarget.value))}
       />
     </label>
   );
