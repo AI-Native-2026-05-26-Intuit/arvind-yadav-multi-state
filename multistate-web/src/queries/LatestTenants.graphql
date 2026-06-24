@@ -1,0 +1,7 @@
+query LatestTenants {
+  latestTenants(limit: 20) {
+    id
+    name
+    updatedAt
+  }
+}

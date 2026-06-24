@@ -6,7 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'coverage', 'vitest.config.ts'] },
+  { ignores: ['dist', 'node_modules', 'coverage', 'vitest.config.ts', 'codegen.ts', 'src/gql/generated/**'] },
   js.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],
