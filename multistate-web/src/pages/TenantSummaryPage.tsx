@@ -18,7 +18,7 @@ export function TenantSummaryPage(): ReactElement {
 
   return (
     <section>
-      <button type="button" onClick={() => summarize({ variables: { id } })} disabled={loading}>
+      <button type="button" onClick={() => { void summarize({ variables: { id } }); }} disabled={loading}>
         Summarize
       </button>
       {error && <div role="alert">Error: {error.message}</div>}

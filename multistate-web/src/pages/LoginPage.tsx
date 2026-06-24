@@ -8,7 +8,7 @@ export function LoginPage(): ReactElement {
     // THREAT MODEL: see src/apollo/client.ts — fake JWT in localStorage
     // is acceptable until W6 wires HttpOnly cookies.
     localStorage.setItem('uc:jwt', 'dev.fake.jwt');
-    navigate('/tenants');
+    void navigate('/tenants');
   };
 
   return (
