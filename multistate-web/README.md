@@ -7,26 +7,26 @@ The Spring Boot backend lives at the repo root; see the [root README](../README.
 ## Requirements
 
 - Node.js 20+ (CI runs on `node-version: 20`)
-- npm (uses the checked-in `package-lock.json`)
+- pnpm 11+ (uses the checked-in `pnpm-lock.yaml`; `pnpm-workspace.yaml` whitelists `esbuild`'s postinstall under pnpm 11's `allowBuilds` gate)
 
 ## Install
 
 From this directory:
 
 ```bash
-npm ci
+pnpm install --frozen-lockfile
 ```
 
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Start the Vite dev server with HMR (default: `http://localhost:5173`). |
-| `npm run build` | Type-check (`tsc --noEmit`) then produce a production build in `dist/`. |
-| `npm run preview` | Serve the built `dist/` locally for a smoke check. |
-| `npm run lint` | ESLint 9 flat config across the project. |
-| `npm run typecheck` | TypeScript no-emit pass. |
-| `npm test` | Run Vitest + Testing Library suite once (non-watch). |
+| `pnpm run dev` | Start the Vite dev server with HMR (default: `http://localhost:5173`). |
+| `pnpm run build` | Type-check (`tsc --noEmit`) then produce a production build in `dist/`. |
+| `pnpm run preview` | Serve the built `dist/` locally for a smoke check. |
+| `pnpm run lint` | ESLint 9 flat config across the project. |
+| `pnpm run typecheck` | TypeScript no-emit pass. |
+| `pnpm test` | Run Vitest + Testing Library suite once (non-watch). |
 
 ## Project layout
 
@@ -88,4 +88,4 @@ The store tests use Zustand 5's `setState(getInitialState(), true)` in `beforeEa
 
 ## CI
 
-[`/.github/workflows/web-ci.yml`](../.github/workflows/web-ci.yml) runs on PRs that touch `multistate-web/**`: `npm ci` → `lint` → `typecheck` → `test` → `build`. Keep the local script names in sync with the workflow.
+[`/.github/workflows/web-ci.yml`](../.github/workflows/web-ci.yml) runs on PRs that touch `multistate-web/**`: `pnpm install --frozen-lockfile` → `lint` → `typecheck` → `test` → `build`. Keep the local script names in sync with the workflow.
