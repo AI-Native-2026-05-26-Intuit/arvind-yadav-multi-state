@@ -1,0 +1,8 @@
+mutation SummarizeTenant($id: ID!) {
+  summarizeTenant(id: $id) {
+    id
+    summaryText
+    confidence
+    __typename
+  }
+}
