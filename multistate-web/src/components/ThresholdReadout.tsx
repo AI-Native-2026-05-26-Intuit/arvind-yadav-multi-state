@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
+import { useTenantFilterStore } from '../stores/useTenantFilterStore';
 
-type Props = { readonly value: number };
-
-export function ThresholdReadout({ value }: Props): ReactElement {
-  return <span role="status">Threshold: {value}%</span>;
+export function ThresholdReadout(): ReactElement {
+  const threshold = useTenantFilterStore((s) => s.threshold);
+  return <span role="status">Threshold: {threshold}%</span>;
 }
