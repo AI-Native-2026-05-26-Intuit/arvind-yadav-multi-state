@@ -88,4 +88,40 @@ describe('ToolCallCard', () => {
       screen.getByRole('complementary', { name: 'tool-call' }),
     ).toHaveAttribute('data-tool-name', 'nexusForState');
   });
+
+  it('exposes the invocation state via data-state attribute', () => {
+    const partial: ToolInvocation = {
+      state:      'partial-call',
+      toolCallId: 'call-8',
+      toolName:   'lookupTenant',
+      args:       {},
+    };
+    const { rerender } = render(<ToolCallCard invocation={partial} />);
+    expect(
+      screen.getByRole('complementary', { name: 'tool-call' }),
+    ).toHaveAttribute('data-state', 'partial-call');
+
+    const call: ToolInvocation = {
+      state:      'call',
+      toolCallId: 'call-9',
+      toolName:   'lookupTenant',
+      args:       { id: 't-1' },
+    };
+    rerender(<ToolCallCard invocation={call} />);
+    expect(
+      screen.getByRole('complementary', { name: 'tool-call' }),
+    ).toHaveAttribute('data-state', 'call');
+
+    const result: ToolInvocation = {
+      state:      'result',
+      toolCallId: 'call-10',
+      toolName:   'lookupTenant',
+      args:       { id: 't-1' },
+      result:     { id: 't-1' },
+    };
+    rerender(<ToolCallCard invocation={result} />);
+    expect(
+      screen.getByRole('complementary', { name: 'tool-call' }),
+    ).toHaveAttribute('data-state', 'result');
+  });
 });
