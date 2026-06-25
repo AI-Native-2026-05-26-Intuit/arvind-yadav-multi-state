@@ -44,7 +44,7 @@ export function TenantChatPanel(): ReactElement {
       </ul>
       <div ref={endRef} />
 
-      {isLoading && <p role="status">Assistant is replying…</p>}
+      {isLoading && <p role="status">Assistant is replying...</p>}
       {error && <p role="alert">Error: {error.message}</p>}
 
       <form aria-label="chat-input" onSubmit={handleSubmit}>
@@ -54,7 +54,7 @@ export function TenantChatPanel(): ReactElement {
           onChange={handleInputChange}
           disabled={isLoading}
         />
-        <button type="submit" disabled={isLoading || input.length === 0}>
+        <button type="submit" disabled={isLoading || input.trim() === ''}>
           Send
         </button>
         <button type="button" onClick={stop} disabled={!isLoading}>
