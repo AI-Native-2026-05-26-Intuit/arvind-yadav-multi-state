@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { streamText } from 'ai';
+import type { CoreMessage } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { tenantTools } from './chat-tools';
 
@@ -45,16 +46,19 @@ const upstreamErrorMapper: MiddlewareHandler = async (c, next) => {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : 'upstream chat service failed';
-    // eslint-disable-next-line no-console
     console.error('[chat] upstream error:', message);
     c.res = sseErrorResponse(message);
   }
 };
 
+interface ChatRequestBody {
+  readonly messages: CoreMessage[];
+}
+
 export const chat = new Hono()
   .use('/chat', upstreamErrorMapper)
   .post('/chat', async (c) => {
-    const { messages } = await c.req.json();
+    const { messages }: ChatRequestBody = await c.req.json();
 
     const result = streamText({
       model: upstream.chatModel('uptime-crew-assistant'),

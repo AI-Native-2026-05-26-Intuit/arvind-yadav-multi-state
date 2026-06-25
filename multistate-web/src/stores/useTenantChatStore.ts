@@ -2,9 +2,13 @@ import type { Message } from 'ai';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-// Same memory fallback rationale as useTenantFilterStore — persist
-// middleware captures `storage` once at creation, so an undefined return
-// would crash on the first set() under jsdom.
+// jsdom defines localStorage as a lazy getter on Window.prototype, which
+// means `window.localStorage` may evaluate to undefined the first time
+// the module loads (before vitest has fully populated the env) but
+// resolve correctly later. createJSONStorage captures its storage once
+// at creation, so we hand it a permanent proxy that defers the lookup
+// to every call — and falls back to an in-memory map when neither
+// localStorage is available (SSR, edge runners).
 const memoryStorage = (() => {
   const store = new Map<string, string>();
   return {
@@ -14,11 +18,27 @@ const memoryStorage = (() => {
   };
 })();
 
-const safeStorage = createJSONStorage(() =>
-  typeof window !== 'undefined' && window.localStorage
-    ? window.localStorage
-    : memoryStorage,
-);
+function resolveStorage(): {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+  removeItem: (k: string) => void;
+} {
+  if (typeof globalThis !== 'undefined' && (globalThis as { localStorage?: Storage }).localStorage) {
+    return (globalThis as unknown as { localStorage: Storage }).localStorage;
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return window.localStorage;
+  }
+  return memoryStorage;
+}
+
+const deferredStorage = {
+  getItem:    (k: string) => resolveStorage().getItem(k),
+  setItem:    (k: string, v: string) => resolveStorage().setItem(k, v),
+  removeItem: (k: string) => resolveStorage().removeItem(k),
+};
+
+const safeStorage = createJSONStorage(() => deferredStorage);
 
 interface UseTenantChatStoreState {
   readonly messages: readonly Message[];

@@ -14,7 +14,7 @@ export const tenantTools = {
     execute: async ({ id }) => {
       const res = await fetch(`${REST_BASE}/tenants/${id}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      return (await res.json()) as unknown;
     },
   }),
   nexusForState: tool({
@@ -29,7 +29,7 @@ export const tenantTools = {
         `${REST_BASE}/tenants?state=${encodeURIComponent(state)}`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      return (await res.json()) as unknown;
     },
   }),
 };
