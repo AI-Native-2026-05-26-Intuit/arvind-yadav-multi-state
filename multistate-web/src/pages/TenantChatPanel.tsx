@@ -3,10 +3,15 @@ import { useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { useParams } from 'react-router-dom';
 import { useTenantChatStore } from '../stores/useTenantChatStore';
+import { ToolCallCard } from './ToolCallCard';
 
 export function TenantChatPanel(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const persist = useTenantChatStore((s) => s.appendAssistantMessage);
+  // Snapshot the persisted history once at mount — passing the live
+  // selector result to initialMessages would reset useChat on every
+  // store write and replay the conversation.
+  const rehydrated = useTenantChatStore.getState().messages;
 
   const {
     messages,
@@ -20,6 +25,7 @@ export function TenantChatPanel(): ReactElement {
   } = useChat({
     api: '/api/chat',
     id: `tenant-${id}`,
+    initialMessages: [...rehydrated],
     // CRITICAL: only persist on completion. Writing partial tokens to
     // Zustand mid-stream breaks the persist middleware's rehydration;
     // see §9.
@@ -39,6 +45,9 @@ export function TenantChatPanel(): ReactElement {
         {messages.map((m) => (
           <li key={m.id} data-role={m.role}>
             <strong>{m.role}:</strong> {m.content}
+            {(m.toolInvocations ?? []).map((inv) => (
+              <ToolCallCard key={inv.toolCallId} invocation={inv} />
+            ))}
           </li>
         ))}
       </ul>

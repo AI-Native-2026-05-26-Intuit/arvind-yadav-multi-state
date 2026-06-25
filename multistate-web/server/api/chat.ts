@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { streamText } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { tenantTools } from './chat-tools';
 
 // THREAT MODEL: this proxy holds the upstream API key. The browser never
 // sees it. The proxy receives only message history from the authenticated
@@ -59,10 +60,18 @@ export const chat = new Hono()
       model: upstream.chatModel('uptime-crew-assistant'),
       system:
         'You are an assistant that helps engineers track multi-state tax compliance. ' +
-        'When asked about a tenant, call lookupTenant first. When asked whether a ' +
-        'tenant has nexus in a specific state, call nexusForState with the two-letter ' +
-        'state code.',
+        'When asked about a specific tenant, call lookupTenant with that tenant id ' +
+        'before answering — never guess fields like state, status, or thresholds. ' +
+        'When asked whether a tenant has nexus in a specific state, call ' +
+        'nexusForState with the two-letter state code and quote the returned rows. ' +
+        'After tool results arrive, write a short natural-language reply for the ' +
+        'engineer — do not just dump JSON.',
       messages,
+      tools: tenantTools,
+      // Allow tool-call → tool-result → final-reply to land in one HTTP
+      // request. Without this, the assistant stops after the tool result
+      // and the user sees raw JSON with no follow-up sentence.
+      maxSteps: 3,
       abortSignal: c.req.raw.signal,
     });
 
