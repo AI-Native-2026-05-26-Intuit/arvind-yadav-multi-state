@@ -26,7 +26,7 @@ describe('TenantChatPanel error path', () => {
 
     const user = userEvent.setup();
     renderPanel();
-    await user.type(screen.getByLabelText('chat-message'), 'hello');
+    await user.type(screen.getByLabelText('chat-input'), 'hello');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     const alert = await waitFor(() => screen.getByRole('alert'));
@@ -43,7 +43,7 @@ describe('TenantChatPanel error path', () => {
 
     const user = userEvent.setup();
     renderPanel();
-    await user.type(screen.getByLabelText('chat-message'), 'hello');
+    await user.type(screen.getByLabelText('chat-input'), 'hello');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     await waitFor(() => screen.getByRole('alert'));

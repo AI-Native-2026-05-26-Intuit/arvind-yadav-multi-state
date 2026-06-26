@@ -41,7 +41,7 @@ export function TenantChatPanel(): ReactElement {
 
   return (
     <section aria-label="tenant-chat">
-      <ul aria-label="chat-transcript">
+      <ul role="log" aria-label="chat-transcript" aria-live="polite">
         {messages.map((m) => (
           <li key={m.id} data-role={m.role}>
             <strong>{m.role}:</strong> {m.content}
@@ -56,9 +56,9 @@ export function TenantChatPanel(): ReactElement {
       {isLoading && <p role="status">Assistant is replying...</p>}
       {error && <p role="alert">Error: {error.message}</p>}
 
-      <form aria-label="chat-input" onSubmit={handleSubmit}>
+      <form aria-label="chat-form" onSubmit={handleSubmit}>
         <input
-          aria-label="chat-message"
+          aria-label="chat-input"
           value={input}
           onChange={handleInputChange}
           disabled={isLoading}

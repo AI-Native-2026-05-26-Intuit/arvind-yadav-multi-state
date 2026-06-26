@@ -74,9 +74,9 @@ describe('TenantSummaryPage – integration via MSW', () => {
     });
 
     expect(
-      await screen.findByRole('link', { name: 'Stub Tenant 01' }),
+      await screen.findByRole('cell', { name: 'Stub Tenant 01' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Stub Tenant 02' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Stub Tenant 02' })).toBeInTheDocument();
   });
 
   it('serves the Apollo response from cache on a remount with the same client', async () => {
@@ -84,7 +84,7 @@ describe('TenantSummaryPage – integration via MSW', () => {
     const client = makeIntegrationApolloClient();
 
     const first = renderWithProviders(<TenantListPage />, { apolloClient: client });
-    await screen.findByRole('link', { name: 'Stub Tenant 01' });
+    await screen.findByRole('cell', { name: 'Stub Tenant 01' });
     first.unmount();
 
     // Force the network layer to fail — if Apollo still serves the answer,
@@ -93,7 +93,7 @@ describe('TenantSummaryPage – integration via MSW', () => {
     renderWithProviders(<TenantListPage />, { apolloClient: client });
 
     expect(
-      await screen.findByRole('link', { name: 'Stub Tenant 01' }),
+      await screen.findByRole('cell', { name: 'Stub Tenant 01' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -162,16 +162,16 @@ describe('TenantSummaryPage – integration via MSW', () => {
       apolloClient: makeIntegrationApolloClient(),
     });
 
-    await screen.findByRole('link', { name: 'Stub Tenant 01' });
+    await screen.findByRole('cell', { name: 'Stub Tenant 01' });
 
     await user.type(screen.getByLabelText(/search/i), 'tenant 02');
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('link', { name: 'Stub Tenant 01' }),
+        screen.queryByRole('cell', { name: 'Stub Tenant 01' }),
       ).not.toBeInTheDocument();
     });
-    expect(screen.getByRole('link', { name: 'Stub Tenant 02' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'Stub Tenant 02' })).toBeInTheDocument();
   });
 
   it('surfaces a GraphQL error envelope through role=alert when the network branch errors', async () => {

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLatestTenantsQuery } from '../gql/generated';
 import { useTenantFilterStore } from '../stores/useTenantFilterStore';
 
@@ -7,6 +8,7 @@ export function TenantListPage(): ReactElement {
   const { loading, error, data } = useLatestTenantsQuery();
   const searchText = useTenantFilterStore((s) => s.searchText);
   const setSearchText = useTenantFilterStore((s) => s.setSearchText);
+  const navigate = useNavigate();
 
   const rows = useMemo(() => {
     const all = data?.latestTenants ?? [];
@@ -33,13 +35,26 @@ export function TenantListPage(): ReactElement {
       ) : rows.length === 0 ? (
         <div role="status" aria-label="no results">no results</div>
       ) : (
-        <ul aria-label="tenant-list">
-          {rows.map((r) => (
-            <li key={r.id}>
-              <a href={`/tenants/${r.id}`}>{r.name}</a>
-            </li>
-          ))}
-        </ul>
+        <table aria-label="tenant-list">
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr
+                key={r.id}
+                onClick={() => void navigate(`/tenants/${r.id}/chat`)}
+                style={{ cursor: 'pointer' }}
+              >
+                <td>{r.name}</td>
+                <td>{r.updatedAt}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </section>
   );

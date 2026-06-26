@@ -57,15 +57,16 @@ describe('TenantListPage', () => {
 
   it('renders the first row by its accessible name after the query resolves', async () => {
     renderWithProviders(<TenantListPage />, { apolloMocks: successMocks });
-    const link = await screen.findByRole('link', { name: 'Acme Corp' });
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', '/tenants/stub-1');
+    expect(
+      await screen.findByRole('cell', { name: 'Acme Corp' }),
+    ).toBeInTheDocument();
   });
 
   it('renders every tenant row from the mock', async () => {
     renderWithProviders(<TenantListPage />, { apolloMocks: successMocks });
-    await screen.findByRole('link', { name: 'Acme Corp' });
-    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    await screen.findByRole('cell', { name: 'Acme Corp' });
+    // 3 data rows + 1 header row.
+    expect(screen.getAllByRole('row')).toHaveLength(4);
   });
 
   it('shows the empty-state status when the server returns no rows', async () => {
@@ -89,21 +90,22 @@ describe('TenantListPage', () => {
 
   it('narrows the visible rows when the user types in the search input', async () => {
     const { user } = renderWithProviders(<TenantListPage />, { apolloMocks: successMocks });
-    await screen.findByRole('link', { name: 'Acme Corp' });
+    await screen.findByRole('cell', { name: 'Acme Corp' });
 
     const search = screen.getByLabelText(/search/i);
     await user.type(search, 'globex');
 
     await waitFor(() => {
-      expect(screen.queryByRole('link', { name: 'Acme Corp' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('cell', { name: 'Acme Corp' })).not.toBeInTheDocument();
     });
-    expect(screen.getByRole('link', { name: 'Globex LLC' })).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByRole('cell', { name: 'Globex LLC' })).toBeInTheDocument();
+    // 1 data row + 1 header row.
+    expect(screen.getAllByRole('row')).toHaveLength(2);
   });
 
   it('falls back to the empty state when the search text matches nothing', async () => {
     const { user } = renderWithProviders(<TenantListPage />, { apolloMocks: successMocks });
-    await screen.findByRole('link', { name: 'Acme Corp' });
+    await screen.findByRole('cell', { name: 'Acme Corp' });
 
     const search = screen.getByLabelText(/search/i);
     await user.type(search, 'zzznomatch');
@@ -113,9 +115,10 @@ describe('TenantListPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders each row inside the tenant-list ul', async () => {
+  it('renders each row inside the tenant-list table', async () => {
     renderWithProviders(<TenantListPage />, { apolloMocks: successMocks });
-    const list = await screen.findByRole('list');
-    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
+    const table = await screen.findByRole('table');
+    // 3 data rows + 1 header row.
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
   });
 });
