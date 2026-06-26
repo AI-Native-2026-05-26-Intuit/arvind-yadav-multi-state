@@ -1,6 +1,8 @@
 import { graphql, http, HttpResponse } from 'msw';
+import { sseHandlers } from './sse-handlers';
 
 export const handlers = [
+  ...sseHandlers,
   graphql.query('LatestTenants', () =>
     HttpResponse.json({
       data: {
