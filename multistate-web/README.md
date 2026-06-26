@@ -28,6 +28,10 @@ pnpm install --frozen-lockfile
 | `pnpm run lint` | ESLint 9 flat config across the project. |
 | `pnpm run typecheck` | TypeScript no-emit pass. |
 | `pnpm test` | Run Vitest + Testing Library suite once (non-watch). |
+| `pnpm run test:watch` | Watch-mode Vitest. |
+| `pnpm run test:coverage` | Vitest run with the v8 coverage reporter (branches gate ≥ 70 globally, ≥ 70 on `src/pages/**`). |
+| `pnpm run e2e` | Playwright run (boots `pnpm dev` via the config's `webServer`). |
+| `pnpm run check` | Single CI entrypoint: `tsc --noEmit && eslint . && vitest run --coverage && playwright test`. |
 | `pnpm run codegen` | Run GraphQL Codegen once against the live `/graphql` schema. Requires the backend to be reachable at `http://localhost:8080/graphql`. |
 | `pnpm run codegen:watch` | Same as `codegen`, but re-runs on document changes. |
 
@@ -229,6 +233,33 @@ The bridge in `setup.ts` is a `beforeAll` that runs **after** MSW installs its p
 
 Each chat test renders with a **unique tenant id** in the URL (`/tenants/stub-${seq}-${Date.now()}/chat`). `useChat({ id })` is keyed off a module-level `Chat` singleton map, so re-using the same id between tests would leak the previous test's messages into the next.
 
+## W4 D5 — testing pyramid & quality gate
+
+W4 D5 closes out the W4 capstone with a four-layer testing pyramid and a single `pnpm check` gate the CI workflow runs as one step.
+
+### Layers
+
+1. **Component tests** — `src/test/TenantListPage.test.tsx`, `src/test/TenantSummaryPage.test.tsx`. Use Apollo's `MockedProvider` via [`src/test/renderWithProviders.tsx`](src/test/renderWithProviders.tsx). Cover heading, loading status (`role="status"` with `"loading…"`), empty state (`role="status"` with `"no results"`), error state (`role="alert"`), and search-input → filter-store wiring. One axe scan per page.
+2. **Integration tests** — [`src/pages/TenantSummaryPage.integration.test.tsx`](src/pages/TenantSummaryPage.integration.test.tsx). Drives the page through the real Apollo `HttpLink` (via `makeIntegrationApolloClient`) and the real TanStack Query path so MSW actually answers the request. Covers REST happy / 500, Apollo loading / happy / cache-hit / error, filter narrowing on both data layers, and cross-component filter-store wiring.
+3. **A11y tests** — [`src/test/tenant.a11y.test.tsx`](src/test/tenant.a11y.test.tsx). Tab order plus dedicated axe scans on the REST table and the empty state.
+4. **End-to-end** — [`e2e/tenant-chat.spec.ts`](e2e/tenant-chat.spec.ts). One Playwright happy-path: login → tenant table row click → chat panel → token stream into `role="log"` → tool-call card inline → reload preserves the assistant message. One `AxeBuilder({ page }).withTags(['wcag2a','wcag2aa']).analyze()` scan on the detail/chat state.
+
+### Helpers
+
+- [`src/test/renderWithProviders.tsx`](src/test/renderWithProviders.tsx) wraps a render in `MockedProvider` (component mode) or `ApolloProvider + HttpLink` (integration mode), a per-render `QueryClient` with `retry: false` / `gcTime: 0`, a `MemoryRouter`, and a single `userEvent.setup()` exposed as `{ user }`.
+- [`src/test/handlers.ts`](src/test/handlers.ts) ships `tenantHandlers`, `tenantErrorHandler` (REST 500), `apolloLoadingHandler` (never-settling promise), and `apolloErrorHandler` (GraphQL errors envelope). Tests opt in with `server.use(...)`.
+
+### Auth + global setup
+
+[`e2e/global-setup.ts`](e2e/global-setup.ts) signs in once (email + password → `Sign in`), waits for `/tenants`, and snapshots `page.context().storageState()` to `e2e/.auth/user.json` (gitignored). Every spec inherits `use.storageState` from [`playwright.config.ts`](playwright.config.ts) so no test pays the login cost again.
+
+### Quality gates
+
+- **`pnpm check`** runs `tsc --noEmit && eslint . && vitest run --coverage && playwright test` and is the single entrypoint CI calls.
+- **Coverage**: branches ≥ 70 globally and on `src/pages/**`; lines/funcs/statements ≥ 75 inside `src/pages/**`. The W4 capstone load-bearing metric is branches.
+- **ESLint 9 flat config** ([`eslint.config.js`](eslint.config.js)): `js.configs.recommended`, `tseslint.configs.recommendedTypeChecked` (scoped to `src/**` so it doesn't try to type-check the config file itself), and the `react-hooks` + `jsx-a11y` recommended rule sets. `@typescript-eslint/no-explicit-any` is `error`; `no-restricted-syntax` rejects both `<any>foo` (`TSTypeAssertion`) and `foo as any` (`TSAsExpression`).
+- **A11y**: `expect(results).toHaveNoViolations()` (jest-axe) on the list, summary, REST table, and empty state; Playwright's `AxeBuilder` runs once against the chat state with WCAG 2.1 A + AA.
+
 ## CI
 
-[`/.github/workflows/web-ci.yml`](../.github/workflows/web-ci.yml) runs on PRs that touch `multistate-web/**`: `pnpm install --frozen-lockfile` → `lint` → `typecheck` → `test` → `build`. Keep the local script names in sync with the workflow.
+[`/.github/workflows/web-ci.yml`](../.github/workflows/web-ci.yml) runs on PRs that touch `multistate-web/**`: `pnpm install --frozen-lockfile` → install Playwright browsers (`pnpm exec playwright install --with-deps chromium`) → **`pnpm check`** → `pnpm run build`. The pre-W4-D5 `lint`/`typecheck`/`test` triple is now subsumed by `pnpm check`.

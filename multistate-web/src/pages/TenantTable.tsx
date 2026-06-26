@@ -39,7 +39,7 @@ export function TenantTable(): ReactElement {
         />
       </label>
       {isLoading && <div role="status" aria-label="loading…">loading…</div>}
-      {error && <div role="alert">{(error as Error).message}</div>}
+      {error && <div role="alert">{error.message}</div>}
       {!isLoading && !error && (
         <table>
           <thead>

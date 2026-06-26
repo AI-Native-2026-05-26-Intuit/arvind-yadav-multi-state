@@ -23,7 +23,9 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: 'multistate-web/pnpm-lock.yaml'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run lint
-      - run: pnpm run typecheck
-      - run: pnpm test
+      # Playwright browsers are needed by `pnpm check` (e2e step).
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      # Single CI entrypoint per W4 D5 Task 4.
+      - run: pnpm check
       - run: pnpm run build

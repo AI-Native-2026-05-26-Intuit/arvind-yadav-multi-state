@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { gql } from '@apollo/client';
+import { axe } from 'jest-axe';
 import { renderWithProviders } from './renderWithProviders';
 import { TenantSummaryPage } from '../pages/TenantSummaryPage';
 
@@ -98,5 +99,11 @@ describe('TenantSummaryPage', () => {
     await user.click(screen.getByRole('button', { name: /summarize/i }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/network kaboom/i);
+  });
+
+  it('has no axe-detectable a11y violations on the initial render', async () => {
+    const { container } = mountSummaryPage(successMocks);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

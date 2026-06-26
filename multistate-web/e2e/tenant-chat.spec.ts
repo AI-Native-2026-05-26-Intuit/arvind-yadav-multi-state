@@ -1,4 +1,5 @@
 import { test, expect, type Route } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 // W4 D5 Task 3 happy path. Apollo and the AI SDK chat proxy are stubbed
 // at the network layer so the test does not depend on the (currently
@@ -84,6 +85,16 @@ test.describe('MultiState W4 capstone happy-path', () => {
     // Open the first tenant row by accessible name.
     await page.getByRole('row', { name: /Stub Tenant 01/i }).click();
     await expect(page).toHaveURL(new RegExp(`/tenants/${TENANT_ID}`));
+    // Wait for the chat surface so axe scans a real, settled DOM state
+    // rather than the in-between paint after the route change.
+    await expect(page.getByRole('textbox', { name: /chat-input/i })).toBeVisible();
+
+    // a11y budget: one scan per page state. Run it on the detail/chat
+    // state and fail the test on any WCAG 2.1 A or AA violation.
+    const detailScan = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa'])
+      .analyze();
+    expect(detailScan.violations).toEqual([]);
 
     // Drive the W4 D4 streamed chat panel.
     await page.getByRole('textbox', { name: /chat-input/i }).fill('hello');

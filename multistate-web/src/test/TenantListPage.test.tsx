@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { gql } from '@apollo/client';
+import { axe } from 'jest-axe';
 import { renderWithProviders } from './renderWithProviders';
 import { TenantListPage } from '../pages/TenantListPage';
 
@@ -45,7 +46,7 @@ const networkErrorMocks = [
 ];
 
 describe('TenantListPage', () => {
-  it('renders the page heading', async () => {
+  it('renders the page heading', () => {
     renderWithProviders(<TenantListPage />, { apolloMocks: successMocks });
     expect(screen.getByRole('heading', { name: /tenants/i })).toBeInTheDocument();
   });
@@ -120,5 +121,14 @@ describe('TenantListPage', () => {
     const table = await screen.findByRole('table');
     // 3 data rows + 1 header row.
     expect(within(table).getAllByRole('row')).toHaveLength(4);
+  });
+
+  it('has no axe-detectable a11y violations on the happy-path render', async () => {
+    const { container } = renderWithProviders(<TenantListPage />, {
+      apolloMocks: successMocks,
+    });
+    await screen.findByRole('cell', { name: 'Acme Corp' });
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });
