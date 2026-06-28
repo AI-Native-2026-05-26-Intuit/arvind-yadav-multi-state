@@ -1,41 +1,47 @@
 import type { ReactElement } from 'react';
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useLatestTenantsQuery } from '../gql/generated';
+import { useQuery } from '@tanstack/react-query';
 import { useTenantFilterStore } from '../stores/useTenantFilterStore';
 
-export function TenantListPage(): ReactElement {
-  const { loading, error, data } = useLatestTenantsQuery();
+type TenantRow = { readonly id: string; readonly name: string; readonly updatedAt: string };
+
+async function fetchTenants(): Promise<readonly TenantRow[]> {
+  const res = await fetch('/api/v1/tenants');
+  if (!res.ok) throw new Error(`Failed to load tenants: HTTP ${res.status}`);
+  return (await res.json()) as readonly TenantRow[];
+}
+
+export function TenantTable(): ReactElement {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['tenants', 'list'],
+    queryFn: fetchTenants,
+  });
   const searchText = useTenantFilterStore((s) => s.searchText);
   const setSearchText = useTenantFilterStore((s) => s.setSearchText);
-  const navigate = useNavigate();
 
   const rows = useMemo(() => {
-    const all = data?.latestTenants ?? [];
+    const all = data ?? [];
     const q = searchText.trim().toLowerCase();
     if (!q) return all;
-    return all.filter((r) => (r.name ?? '').toLowerCase().includes(q));
+    return all.filter((r) => r.name.toLowerCase().includes(q));
   }, [data, searchText]);
 
   return (
     <section>
-      <h1>Tenants</h1>
       <label>
-        Search
+        Filter
         <input
           type="search"
+          role="searchbox"
+          aria-label="filter"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
         />
       </label>
-      {loading ? (
-        <div role="status" aria-label="loading…">loading…</div>
-      ) : error ? (
-        <div role="alert">Error: {error.message}</div>
-      ) : rows.length === 0 ? (
-        <div role="status" aria-label="no results">no results</div>
-      ) : (
-        <table aria-label="tenant-list">
+      {isLoading && <div role="status" aria-label="loading…">loading…</div>}
+      {error && <div role="alert">{error.message}</div>}
+      {!isLoading && !error && (
+        <table>
           <thead>
             <tr>
               <th scope="col">Name</th>
@@ -44,11 +50,7 @@ export function TenantListPage(): ReactElement {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr
-                key={r.id}
-                onClick={() => void navigate(`/tenants/${r.id}/chat`)}
-                style={{ cursor: 'pointer' }}
-              >
+              <tr key={r.id}>
                 <td>{r.name}</td>
                 <td>{r.updatedAt}</td>
               </tr>

@@ -184,3 +184,179 @@ I did **not** see a suggestion to paste an `nginx` config or to drop
 `X-Accel-Buffering: no`, `Content-Type: text/event-stream`) inline in
 `server/api/chat.ts`, which is what nginx (and the Vite dev proxy) actually
 read to skip buffering. Documented inline in the file and in both READMEs.
+
+---
+
+# Prompt Journal — Week 4 Day 5
+
+W4 D5 capstone: testing pyramid (component / integration / a11y / e2e)
+behind a single `pnpm check` quality gate.
+
+---
+
+## 1. Vitest harness + ≥ 15 component tests
+
+**Prompt (paraphrased):** Install dev deps (`@vitest/coverage-v8`, `jest-axe`,
+the RTL stack). Rewrite `vitest.config.ts` to merge with `vite.config.ts`,
+set `environment: 'jsdom'`, `setupFiles: ['./src/test/setupTests.ts']`, and a
+coverage block with `provider: 'v8'`, `include: ['src/**/*.{ts,tsx}']`,
+exclusions for `src/gql/generated/**` and the test folder, and
+`thresholds.branches: 70`. Create `setupTests.ts` (jest-dom matcher, extend
+expect with `toHaveNoViolations`, MSW lifecycle, per-test `localStorage.clear()`).
+Create `renderWithProviders.tsx` (MockedProvider + QueryClientProvider +
+MemoryRouter, returns a single `userEvent.setup()` per render). Write ≥ 15
+component tests across `TenantListPage.test.tsx` and `TenantSummaryPage.test.tsx`
+using `getByRole` / `findByRole` as the primary query.
+
+**Model output (highlights):**
+- First pass shipped `vitest.config.ts` with `lines/funcs/statements: 75` as
+  *global* thresholds (mirroring the appendix). Coverage failed those gates on
+  files outside the W4 D5 scope (`LoginPage`, `router.tsx`, `useTenant`).
+- Re-scoped the 75% line/func/statement bar to `src/pages/**` and kept
+  `branches: 70` global, since the rubric only names branches as the gate.
+- `Assertion<T>` module augmentation for `toHaveNoViolations` initially failed
+  with `TS2664: Invalid module name in augmentation, module '@vitest/expect'
+  cannot be found.` and `TS2428: All declarations of 'Assertion' must have
+  identical type parameters.` Fixed by augmenting the `vitest` re-export with
+  `interface Assertion<T = any>` to match the upstream generic default.
+- A standalone `jest-axe.d.ts` ambient declaration replaced `@types/jest-axe`
+  (which targets jest, not vitest's matcher contract).
+- Updated `TenantListPage.tsx` + `TenantSummaryPage.tsx` to expose the
+  accessible names the rubric calls for: `role="status"` with `loading…` and
+  `no results`, `role="alert"` for errors, a labelled search input wired to
+  `useTenantFilterStore`.
+
+**Verdict:** **Accepted with corrections.** The model's per-directory threshold
+override is the right shape for a real project: tighter local gates on the
+code the new tests target, looser global bar so unrelated untested code (W6
+auth, Login) doesn't fail CI before its own tests land. 18 tests shipped
+(11 list + 7 summary), well past the ≥ 15 gate. The `Assertion<T = any>`
+augmentation is non-obvious — leaving the default off (`T = unknown`) silently
+breaks the interface merge with vitest's upstream `Assertion<T = any>`.
+
+---
+
+## 2. MSW integration tests (≥ 12)
+
+**Prompt (paraphrased):** Extend `src/test/handlers.ts` with `tenantHandlers`
+(Apollo `LatestTenants` happy + REST `/api/v1/tenants` happy) and a separately-
+exported `tenantErrorHandler` so individual tests can `server.use(...)` to opt
+into the 500 branch. Write ≥ 12 integration tests covering REST happy / 500,
+Apollo loading / happy / cache-hit, and filter-store + REST narrowing.
+
+**Model output (highlights):**
+- Suggested wiring the integration tests through `MockedProvider` again —
+  rejected (see verdict). Switched to a real `ApolloClient + HttpLink`
+  exported as `makeIntegrationApolloClient()` from `renderWithProviders.tsx`
+  so requests actually leave Apollo and land on MSW.
+- Shipped both `/api/v1/tenants` and `http://localhost:8080/api/v1/tenants`
+  handler variants since the real fetch URL depends on whether the page hits
+  same-origin or the proxied form.
+- `apolloLoadingHandler` returns `new Promise<never>(() => undefined)` —
+  needs an explicit `Promise<never>` annotation because msw's resolver type
+  unions a `DefaultBodyType` constraint that fails to widen `Promise<unknown>`.
+- For GraphQL error mocks, replaced `new GraphQLError('msg')` with plain
+  `{ message: 'msg' }` literals — `exactOptionalPropertyTypes: true` rejects
+  `GraphQLError`'s optional `locations: SourceLocation[] | undefined` because
+  the target type is `readonly SourceLocation[]` (without `| undefined`).
+- For network error mocks, replaced `new ApolloError({ errorMessage })` with a
+  plain `new Error('Boom')` — `ApolloError` is not a constructor in v4.
+
+**Verdict:** **Accepted.** Pushed back on the "use MockedProvider again"
+suggestion because it would have made these tests indistinguishable from the
+Task 1 component tests — the rubric explicitly asks for MSW integration
+coverage, which means the network path has to actually run. The integration
+suite shipped 13 tests (≥ 12 gate). Cache-hit tests use the same `QueryClient`
+or `ApolloClient` instance across two renders and then flip the network to
+500 — if the cached value is gone, the second render alerts; in the cache hit
+path the second render still shows the cell.
+
+---
+
+## 3. Playwright E2E happy-path
+
+**Prompt (paraphrased):** Install Playwright + `@axe-core/playwright`. Add
+`playwright.config.ts` (testDir, fullyParallel, retries on CI, chromium
+project, webServer booting `pnpm dev`, `use.storageState` →
+`e2e/.auth/user.json`). Add `e2e/global-setup.ts` (log in once, persist
+storage state). Write `e2e/tenant-chat.spec.ts` — navigate to `/tenants`,
+click a row by accessible name, drive the W4 D4 chat panel, assert streamed
+tokens in `getByRole('log')`, assert the tool-call card is visible, reload,
+assert the conversation persists.
+
+**Model output (highlights):**
+- First pass suggested keeping `<ul><li><a>` markup on the tenant list and
+  having the test query by `link` accessible name — but the rubric snippet
+  expects `page.getByRole('row', { name })`, which only resolves on an actual
+  `<table>`. Switched the list page to render a `<table>` (header row + data
+  rows) and updated the vitest tests to use `getByRole('cell', { name })`.
+- For the chat panel: added `role="log" aria-live="polite"` to the transcript
+  `<ul>` so the spec's `page.getByRole('log')` resolves; renamed the input's
+  `aria-label` from `chat-message` to `chat-input` so
+  `getByRole('textbox', { name: /chat-input/i })` finds the input the user
+  types into.
+- The model offered a `data-testid="row"` shortcut on the table rows. Rejected
+  — the rubric explicitly says `data-testid` only where role / accessible name
+  is genuinely insufficient. The `<tr>`'s accessible name is the
+  concatenation of its `<td>` text, which `getByRole('row', { name: /Stub
+  Tenant 01/i })` already matches.
+- LoginPage gained real email + password inputs (was a single-button stub) so
+  global-setup's `getByLabel(/email/i)` and `getByLabel(/password/i)` resolve.
+- The model initially suggested `await page.waitForTimeout(500)` to "let the
+  stream finish." Rejected — Playwright's `expect(...).toContainText(...)`
+  retries on its own; the timeout would have made the test flaky and slow.
+- Network is stubbed at `page.route('**/graphql', ...)` and
+  `page.route('**/api/chat', ...)` since the W3 D4 Spring AI backend isn't
+  running in CI. The `/api/chat` stub emits the AI SDK v4 data-stream
+  protocol: `0:"<text>"` deltas, a `9:` tool-call frame, an `a:` tool-result
+  frame, and a `d:` finish frame.
+
+**Verdict:** **Accepted with two rejected shortcuts** (data-testid on the row,
+`waitForTimeout`). The model also initially imported `ApolloProvider` from
+`@apollo/client` — fails at runtime as `undefined` because Apollo v4 moved it
+to `@apollo/client/react`. Caught on first test run.
+
+---
+
+## 4. a11y + ESLint 9 + CI gate
+
+**Prompt (paraphrased):** Add one `toHaveNoViolations()` assertion per page
+test. Wire `AxeBuilder({ page }).withTags(['wcag2a','wcag2aa'])` into the
+Playwright spec on the detail-page state — one a11y scan per page state.
+Install ESLint 9 + plugins, write a flat config with
+`recommendedTypeChecked`, `react-hooks/recommended`, `jsx-a11y/recommended`,
+and bans on `@typescript-eslint/no-explicit-any` + `as any` via
+`no-restricted-syntax`. Add a `pnpm check` script
+(`tsc --noEmit && eslint . && vitest run --coverage && playwright test`) and
+update the GitHub Action to call it as the single CI entrypoint. Add a
+`tenant.a11y.test.tsx` for tab order + axe scans. Total tests ≥ 30.
+
+**Model output (highlights):**
+- First flat-config pass spread `tseslint.configs.recommendedTypeChecked` at
+  the top level — failed at lint time on `eslint.config.js` itself with
+  `You have used a rule which requires type information, but don't have
+  parserOptions set to generate type information for this file.` Fixed by
+  mapping the typeChecked configs through `.map(cfg => ({ ...cfg, files:
+  ['src/**/*.{ts,tsx}'] }))` so the type-aware rules only apply to source.
+- `no-restricted-syntax` needed both selectors: `TSTypeAssertion` catches the
+  legacy `<any>foo` syntax, `TSAsExpression` catches the modern `foo as any`.
+  `@typescript-eslint/no-explicit-any` alone doesn't cover the cast form.
+- ESLint caught two real issues the new rules surface: an `(error as Error)`
+  cast in `TenantTable.tsx` (`no-unnecessary-type-assertion`) and an `async`
+  arrow with no `await` in `TenantListPage.test.tsx` (`require-await`). Both
+  fixed in the same commit.
+- The Playwright AxeBuilder scan is placed *after* `getByRole('textbox', {
+  name: /chat-input/i }).toBeVisible()` so axe sees a settled DOM, not the
+  paint between route change and chat mount.
+- CI workflow now installs Playwright browsers
+  (`pnpm exec playwright install --with-deps chromium`) before calling
+  `pnpm check`, since `pnpm check` runs the e2e step.
+
+**Verdict:** **Accepted.** The scoped-typeChecked pattern is the standard
+ESLint 9 flat-config workaround for project-scoped rules; documenting it in
+the config file's comment block. The `as any` ban via `no-restricted-syntax`
+is belt-and-braces over `no-explicit-any`, but the rubric explicitly names
+both — and `no-explicit-any` does not flag the cast form. Final tally: 80
+tests (79 vitest + 1 Playwright), branches 86% global / 89% in `src/pages`,
+zero ESLint errors, zero axe violations across 4 vitest scans + 1 Playwright
+scan, `pnpm check` exits 0.

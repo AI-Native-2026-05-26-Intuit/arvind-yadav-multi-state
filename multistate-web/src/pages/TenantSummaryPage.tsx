@@ -18,15 +18,20 @@ export function TenantSummaryPage(): ReactElement {
 
   return (
     <section>
+      <h1>Tenant Summary</h1>
       <button type="button" onClick={() => { void summarize({ variables: { id } }); }} disabled={loading}>
         Summarize
       </button>
+      {loading && <div role="status" aria-label="loading…">loading…</div>}
       {error && <div role="alert">Error: {error.message}</div>}
-      {data && (
+      {!loading && !error && data && (
         <article>
           <p>{data.summarizeTenant.summaryText}</p>
           <p>confidence: {data.summarizeTenant.confidence}</p>
         </article>
+      )}
+      {!loading && !error && !data && (
+        <div role="status" aria-label="no results">no results</div>
       )}
     </section>
   );

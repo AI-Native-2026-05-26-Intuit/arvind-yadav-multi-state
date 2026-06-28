@@ -1,13 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MockedProvider } from '@apollo/client/testing/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { screen, waitFor } from '@testing-library/react';
+import { Route, Routes } from 'react-router-dom';
 import { gql } from '@apollo/client';
+import { axe } from 'jest-axe';
+import { renderWithProviders } from './renderWithProviders';
 import { TenantSummaryPage } from '../pages/TenantSummaryPage';
 
-// See TenantListPage.test.tsx for why we use MockedProvider instead of MSW
-// for Apollo-backed tests — MSW handlers still exist for any future Node-env
-// integration coverage of summarizeTenant.
 const SUMMARIZE = gql`
   mutation SummarizeTenant($id: ID!) {
     summarizeTenant(id: $id) {
@@ -19,11 +17,10 @@ const SUMMARIZE = gql`
   }
 `;
 
-const mocks = [
+const successMocks = [
   {
     request: { query: SUMMARIZE, variables: { id: 'stub-1' } },
-    // Hold the result so the optimistic phase is observable in the test.
-    delay: 200,
+    delay: 50,
     result: {
       data: {
         summarizeTenant: {
@@ -37,32 +34,76 @@ const mocks = [
   },
 ];
 
+const errorMocks = [
+  {
+    request: { query: SUMMARIZE, variables: { id: 'stub-1' } },
+    result: { errors: [{ message: 'Tenant gone' }] },
+  },
+];
+
+const networkErrorMocks = [
+  {
+    request: { query: SUMMARIZE, variables: { id: 'stub-1' } },
+    error: new Error('Network kaboom'),
+  },
+];
+
+function mountSummaryPage(mocks: ReadonlyArray<unknown>) {
+  return renderWithProviders(
+    <Routes>
+      <Route path="/tenants/:id/summary" element={<TenantSummaryPage />} />
+    </Routes>,
+    {
+      apolloMocks: mocks as never,
+      initialEntries: ['/tenants/stub-1/summary'],
+    },
+  );
+}
+
 describe('TenantSummaryPage', () => {
-  it('renders the real server value after Summarize is clicked', async () => {
-    // NOTE: Apollo v4 changed useMutation so the hook's `data` field is
-    // `undefined` while a mutation is in flight even with an
-    // `optimisticResponse` — the optimistic value is written to the
-    // normalised cache but no longer surfaces through `useMutation.data`.
-    // The optimisticResponse is still wired on the page (and still updates
-    // any *query* reading TenantSummary via the cache), so the production
-    // behaviour the spec describes still happens for cache-reading pages;
-    // this test asserts the mutation's resolved value, which is what the
-    // current page renders through `useMutation`'s data.
-    render(
-      <MockedProvider mocks={mocks}>
-        <MemoryRouter initialEntries={['/tenants/stub-1/summary']}>
-          <Routes>
-            <Route path="/tenants/:id/summary" element={<TenantSummaryPage />} />
-          </Routes>
-        </MemoryRouter>
-      </MockedProvider>,
-    );
+  it('renders the page heading on initial mount', () => {
+    mountSummaryPage(successMocks);
+    expect(screen.getByRole('heading', { name: /tenant summary/i })).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /summarize/i }));
+  it('starts in the empty state until the user requests a summary', () => {
+    mountSummaryPage(successMocks);
+    expect(screen.getByRole('status', { name: /no results/i })).toBeInTheDocument();
+  });
 
-    await waitFor(() =>
-      expect(screen.getByText('stub summary from MSW')).toBeInTheDocument(),
-    );
+  it('shows the loading status while the mutation is in flight', async () => {
+    const { user } = mountSummaryPage(successMocks);
+    await user.click(screen.getByRole('button', { name: /summarize/i }));
+    expect(await screen.findByRole('status', { name: /loading…/i })).toBeInTheDocument();
+  });
+
+  it('renders the resolved summary after Summarize is clicked', async () => {
+    const { user } = mountSummaryPage(successMocks);
+    await user.click(screen.getByRole('button', { name: /summarize/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('stub summary from MSW')).toBeInTheDocument();
+    });
     expect(screen.getByText(/confidence:\s*HIGH/)).toBeInTheDocument();
+  });
+
+  it('surfaces a GraphQL mutation error through role=alert', async () => {
+    const { user } = mountSummaryPage(errorMocks);
+    await user.click(screen.getByRole('button', { name: /summarize/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/tenant gone/i);
+  });
+
+  it('surfaces a network error from the mutation through role=alert', async () => {
+    const { user } = mountSummaryPage(networkErrorMocks);
+    await user.click(screen.getByRole('button', { name: /summarize/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/network kaboom/i);
+  });
+
+  it('has no axe-detectable a11y violations on the initial render', async () => {
+    const { container } = mountSummaryPage(successMocks);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

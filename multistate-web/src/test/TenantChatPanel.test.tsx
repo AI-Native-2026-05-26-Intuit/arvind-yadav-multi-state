@@ -23,8 +23,8 @@ function renderPanel(): string {
 describe('TenantChatPanel', () => {
   it('renders the chat transcript and input form', () => {
     renderPanel();
-    expect(screen.getByRole('list', { name: 'chat-transcript' })).toBeInTheDocument();
-    expect(screen.getByRole('form', { name: 'chat-input' })).toBeInTheDocument();
+    expect(screen.getByRole('log', { name: 'chat-transcript' })).toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'chat-form' })).toBeInTheDocument();
   });
 
   it('disables Send when the input is empty', () => {
@@ -35,14 +35,14 @@ describe('TenantChatPanel', () => {
   it('disables Send when the input is whitespace-only', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await user.type(screen.getByLabelText('chat-message'), '   ');
+    await user.type(screen.getByLabelText('chat-input'), '   ');
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
   });
 
   it('enables Send once non-whitespace input is present', async () => {
     const user = userEvent.setup();
     renderPanel();
-    await user.type(screen.getByLabelText('chat-message'), 'hi');
+    await user.type(screen.getByLabelText('chat-input'), 'hi');
     expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
   });
 
@@ -56,7 +56,7 @@ describe('TenantChatPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText('chat-message'), 'hello');
+    await user.type(screen.getByLabelText('chat-input'), 'hello');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     await waitFor(() =>
@@ -68,7 +68,7 @@ describe('TenantChatPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText('chat-message'), 'hello');
+    await user.type(screen.getByLabelText('chat-input'), 'hello');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     const assistantLi = await waitFor(() => {
@@ -83,7 +83,7 @@ describe('TenantChatPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText('chat-message'), 'hello there');
+    await user.type(screen.getByLabelText('chat-input'), 'hello there');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     await waitFor(() => {
@@ -119,7 +119,7 @@ describe('TenantChatPanel', () => {
 
     const user = userEvent.setup();
     renderPanel();
-    await user.type(screen.getByLabelText('chat-message'), 'hi');
+    await user.type(screen.getByLabelText('chat-input'), 'hi');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     // Wait for the partial token to land so we know the stream is live.
@@ -153,7 +153,7 @@ describe('TenantChatPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText('chat-message'), 'hello');
+    await user.type(screen.getByLabelText('chat-input'), 'hello');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() =>
       expect(screen.getByText(/stub tenant reply\./)).toBeInTheDocument(),
@@ -173,7 +173,7 @@ describe('TenantChatPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.type(screen.getByLabelText('chat-message'), 'hello');
+    await user.type(screen.getByLabelText('chat-input'), 'hello');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() =>
       expect(screen.getByText(/stub tenant reply\./)).toBeInTheDocument(),

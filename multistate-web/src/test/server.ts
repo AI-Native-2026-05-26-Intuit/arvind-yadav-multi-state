@@ -1,9 +1,6 @@
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll } from 'vitest';
 import { handlers } from './handlers';
 
+// Lifecycle (listen/resetHandlers/close) lives in setupTests.ts so a single
+// setupFiles entry owns the test environment wiring.
 export const server = setupServer(...handlers);
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
