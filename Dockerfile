@@ -58,6 +58,16 @@ WORKDIR /extract
 COPY --from=builder /staging/app.jar app.jar
 RUN java -Djarmode=layertools -jar app.jar extract --destination .
 
+# -------- 2b. HEALTHCHECK PROBE STAGE --------
+# Distroless has no shell/curl/wget, so the HEALTHCHECK cannot be a shell line.
+# Compile a tiny static, dependency-free Go probe (stdlib only) that GETs the
+# readiness endpoint and exits 0/1. Discarded after the binary is produced.
+FROM golang:1.23-alpine AS healthcheck
+WORKDIR /src
+COPY docker/healthcheck/go.mod ./
+COPY docker/healthcheck/main.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
+
 # -------- 3. RUNTIME STAGE --------
 # Distroless JRE. No shell, no package manager, no user-management tools.
 FROM gcr.io/distroless/java21-debian12:nonroot AS runtime
@@ -80,7 +90,17 @@ COPY --from=extractor /extract/spring-boot-loader/    ./
 COPY --from=extractor /extract/snapshot-dependencies/ ./
 COPY --from=extractor /extract/application/           ./
 
+# Static Go health probe (world-executable 0755 from `go build`), used by the
+# HEALTHCHECK below since distroless has no shell/curl/wget.
+COPY --from=healthcheck /healthcheck /home/nonroot/healthcheck
+
 EXPOSE 8080
+
+# Exec-form CMD (no shell in distroless). A success during start-period flips
+# the container to "healthy" immediately; failures during it don't count as
+# unhealthy.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=40s --retries=3 \
+  CMD ["/home/nonroot/healthcheck"]
 
 # Distroless image has no shell - ENTRYPOINT MUST be exec form.
 ENTRYPOINT ["java","org.springframework.boot.loader.launch.JarLauncher"]
