@@ -1,0 +1,44 @@
+# .dockerignore - keep the build context small + secrets-free.
+.git
+.gitignore
+.gitattributes
+.github/
+
+# Build outputs
+build/
+out/
+target/
+**/node_modules
+.gradle/
+
+# Frontend module - not part of the API image.
+multistate-web/
+
+# Local dev / tooling not needed to build the API image.
+bin/
+.dev-logs/
+.claude/
+
+# IDE / OS junk
+.idea/
+.vscode/
+.DS_Store
+*.iml
+
+# Test artefacts
+**/coverage
+**/test-results
+
+# SECRETS - never enter the build context.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+secrets/
+credentials.json
+docker-compose.override.yml
+
+# Docs (not needed in runtime image)
+*.md
+docs/
