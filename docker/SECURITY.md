@@ -1,9 +1,9 @@
 # Runtime image hardening — `multistate-api`
 
-Covers the non-root user, the HEALTHCHECK approach, the no-secrets policy and
-the OCI labels for the distroless runtime image
-(`uptimecrew/multistate-api`). Base-image digest pinning, Trivy scan results
-and CI wiring are documented in the Task 4 / Task 5 follow-ups.
+Covers the non-root user, the HEALTHCHECK approach, the no-secrets policy, the
+OCI labels, the digest-pinned base images, Trivy waivers, CI gating and the
+tagging policy for the distroless runtime image
+(`uptimecrew/multistate-api`).
 
 ## 1. Non-root (USER 65532)
 
@@ -125,7 +125,49 @@ $ docker inspect --format '{{json .Config.Labels}}' uptimecrew/multistate-api:0.
 }
 ```
 
-## 5. Operator commands
+## 5. Base images & pinned digests
+
+| Stage       | Base image                                    | Why                                       |
+|-------------|-----------------------------------------------|-------------------------------------------|
+| builder     | `eclipse-temurin:21-jdk-jammy`                | Full JDK + Gradle; discarded after build  |
+| extractor   | `eclipse-temurin:21-jre-jammy`                | JRE only; runs `layertools extract`       |
+| healthcheck | `golang:1.23-alpine`                          | Compiles the static probe; discarded      |
+| runtime     | `gcr.io/distroless/java21-debian12:nonroot`   | No shell/apt; pre-created UID 65532       |
+
+All three **runtime-lineage** base images are pinned by digest (`@sha256:…`),
+not by tag. A tag is mutable — the same `:21-jre-jammy` reference can change
+bytes across days; a digest is content-addressed and immutable.
+
+```text
+eclipse-temurin:21-jdk-jammy               @sha256:801b7e1a9c4befaf82bf9a2a58025ef43a7694bbc84779187ad0524d84742772
+eclipse-temurin:21-jre-jammy               @sha256:199aebeb3adcde4910695cdebfe782ada38dadb6cc8013159b58d3724451befd
+gcr.io/distroless/java21-debian12:nonroot  @sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d
+```
+
+Resolve a digest with `docker pull <ref> && docker images --digests <repo>`.
+Refresh on the **first business day of each month**, or immediately if Trivy
+reports a newly-discovered HIGH/CRITICAL on a current digest. Bump the
+`image.version` label on every refresh.
+
+## 6. Scan findings & waivers
+
+`trivy image --severity HIGH,CRITICAL --ignore-unfixed` is the gate. Findings
+that have a fix must be remediated (dep bump, base-digest refresh, or rebuild
+of the probe stage). Findings without a fix that are demonstrably not
+reachable from this app may be waived in `.trivyignore` — every waiver is
+dated and scoped, with a review date.
+
+**Active waiver** (`.trivyignore`):
+
+- **CVE-2026-41254 — `liblcms2-2`** (distroless runtime base). Fixed upstream
+  as Debian `2.14-2+deb12u1`; the pinned distroless digest predates that
+  rebuild. `liblcms2` is pulled by the JRE's `java.desktop` image-I/O codecs,
+  which this headless API never invokes — **not reachable**. Clears on the
+  monthly base digest refresh. *Added 2026-06-29, review by 2026-07-31.*
+
+Result: `trivy … --ignorefile .trivyignore --exit-code 1` → **exit 0**.
+
+## 7. Operator commands
 
 ```bash
 # 1. Build (version + git sha populate the OCI labels).
@@ -134,14 +176,33 @@ docker build \
   --build-arg GIT_SHA=$(git rev-parse --short HEAD) \
   -t uptimecrew/multistate-api:0.1.0 .
 
-# 2. Run (non-root inside, host port 8080, resource caps).
+# 2. Scan (fail-by-default on fixable HIGH/CRITICAL; honour the waiver file).
+trivy image --severity HIGH,CRITICAL --ignore-unfixed \
+  --ignorefile .trivyignore uptimecrew/multistate-api:0.1.0
+
+# 3. Run (non-root inside, host port 8080, resource caps applied).
 docker run -d --name multistate-api \
   --memory=512m --cpus=1.0 -p 8080:8080 \
   uptimecrew/multistate-api:0.1.0
-
-# 3. Confirm the hardening.
-docker inspect --format '{{.Config.User}}' uptimecrew/multistate-api:0.1.0
-docker inspect --format '{{.Config.Healthcheck.Test}}' uptimecrew/multistate-api:0.1.0
-# Wait ~30 s for the start-period to elapse:
-docker inspect --format '{{.State.Health.Status}}' multistate-api  # -> healthy
 ```
+
+## 8. Scan cadence
+
+- **Every PR** touching the image: `.github/workflows/docker.yml` runs
+  hadolint, then build → Trivy
+  (`HIGH,CRITICAL --ignore-unfixed --exit-code 1`, honouring `.trivyignore`)
+  → 60-s actuator smoke test. A new fixable finding fails the PR.
+- **On merge to main**: same scan plus push to the private registry with
+  `scanOnPush=true` (registry-side second opinion). *Push path documented,
+  not implemented for D1.*
+- **Weekly cron** (future `docker-rescan.yml`): re-scan the deployed digest —
+  new CVEs land on unchanged bytes daily, so Monday-clean can be Friday-dirty.
+
+## 9. Tagging policy
+
+ECR repo is `tagMutability=IMMUTABLE`. Tags written per build:
+
+- `uptimecrew/multistate-api:0.1.0` — human-friendly semver, immutable.
+- `uptimecrew/multistate-api:<git-sha>` — exact source pin, immutable.
+- Never `:latest`. Production manifests (Compose, Kubernetes, ECS) reference
+  the digest `uptimecrew/multistate-api@sha256:…`, never a mutable tag.

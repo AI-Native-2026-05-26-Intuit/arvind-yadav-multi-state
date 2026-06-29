@@ -1,0 +1,10 @@
+# .hadolint.yaml
+# Hadolint config: catch the W5 D1 Topic-3..8 anti-patterns at PR time.
+ignored: []
+trustedRegistries:
+  - docker.io                  # eclipse-temurin (builder/extractor) + golang probe stage
+  - gcr.io                     # distroless runtime base
+  - public.ecr.aws
+  - 123456789012.dkr.ecr.us-east-1.amazonaws.com
+  - ghcr.io
+failure-threshold: warning

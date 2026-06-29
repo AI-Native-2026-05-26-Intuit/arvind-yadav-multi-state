@@ -1,0 +1,136 @@
+# .github/workflows/docker.yml
+#
+# Repo layout note: in this repo the multistate-api module IS the repository
+# root (Gradle build + src/ live at the root; multistate-web/ is the frontend).
+# So the Docker build context is "." and the Dockerfile is ./Dockerfile, rather
+# than the ./multistate-api/ paths in the course reference.
+name: multistate-api docker
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle/**'
+      - 'docker/**'
+      - '.hadolint.yaml'
+      - '.trivyignore'
+      - '.github/workflows/docker.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'build.gradle'
+      - '.github/workflows/docker.yml'
+
+permissions:
+  contents: read
+  id-token: write   # for AWS OIDC -> ECR login on main pushes (push path out of scope today)
+
+jobs:
+  hadolint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config:     .hadolint.yaml
+          failure-threshold: warning   # warnings AND errors fail the PR
+
+  build-scan-smoke:
+    runs-on: ubuntu-22.04
+    needs: hadolint
+    # The app connects to its datastores on localhost (application.yml `local`
+    # profile). On a Linux runner the container is started with --network host,
+    # so localhost:5432/27017/6379 reach these service containers directly.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: devpass
+          POSTGRES_DB: postgres
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      mongo:
+        image: mongo:7
+        ports: [ '27017:27017' ]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: [ '6379:6379' ]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (PR - load, don't push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: uptimecrew/multistate-api:ci-${{ github.run_id }}
+          build-args: |
+            APP_VERSION=${{ github.sha }}
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Trivy scan - fail on HIGH/CRITICAL (waivers in .trivyignore)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref:      uptimecrew/multistate-api:ci-${{ github.run_id }}
+          severity:       HIGH,CRITICAL
+          ignore-unfixed: true
+          scanners:       vuln
+          exit-code:      1
+          trivyignores:   .trivyignore
+
+      - name: Load DB schema (Flyway location is filesystem:db, absent from the image)
+        run: |
+          for f in db/V1__schema.sql db/V2__seed.sql db/V3__event_outbox.sql; do
+            [ -f "$f" ] || continue
+            docker run --rm --network host -e PGPASSWORD=devpass -v "$PWD/$f:/sql:ro" \
+              postgres:16-alpine \
+              psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /sql
+          done
+
+      - name: Smoke test - boot, health, kill
+        run: |
+          docker run -d --name multistate-smoke --network host \
+            -e OTEL_SDK_DISABLED=true \
+            -e SPRING_FLYWAY_ENABLED=false \
+            uptimecrew/multistate-api:ci-${{ github.run_id }}
+
+          # Probe the public /actuator/health aggregate: the resource server
+          # secures the /actuator/health/{liveness,readiness} sub-paths (401),
+          # while the aggregate reports both groups UP unauthenticated.
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/actuator/health; then
+              echo "Healthy after $((i*2))s"
+              docker rm -f multistate-smoke
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Failed health check; logs follow:"
+          docker logs multistate-smoke
+          exit 1
+
+  # ── main push path (OUT OF SCOPE for W5 D1 — documented, not implemented) ──
+  # On merge to main this job would: configure AWS creds via OIDC, log in to
+  # ECR, then docker/build-push-action with push: true and tags
+  #   <acct>.dkr.ecr.<region>.amazonaws.com/uptimecrew/multistate-api:0.1.0
+  #   <acct>.dkr.ecr.<region>.amazonaws.com/uptimecrew/multistate-api:${{ github.sha }}
+  # ECR repo is tagMutability=IMMUTABLE with scanOnPush=true. Not enabled today.

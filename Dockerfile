@@ -9,14 +9,18 @@
 #     --build-arg GIT_SHA=$(git rev-parse --short HEAD) \
 #     -t uptimecrew/multistate-api:0.1.0 .
 #
-# NOTE: base images are referenced by tag here. Task 4 pins each FROM to a real
-# @sha256 digest for reproducibility.
+# NOTE: all three runtime-lineage base images are pinned by digest (@sha256:…)
+# below, not by tag. A tag is mutable - the same `:21-jre-jammy` reference can
+# change bytes across days. A digest is content-addressed and immutable.
+# Resolve a digest with: docker pull <ref> && docker images --digests <repo>.
+# Refresh on the first business day of each month, or immediately if Trivy
+# reports a newly-discovered HIGH/CRITICAL on a current digest.
 
 # -------- 1. BUILD STAGE --------
 # Full JDK + Gradle. Discarded after bootJar is produced. The project pins a
 # Java 17 toolchain; the Foojay resolver (settings.gradle) fetches JDK 17 inside
 # this JDK 21 image when no matching toolchain is already installed.
-FROM eclipse-temurin:21-jdk-jammy AS builder
+FROM eclipse-temurin:21-jdk-jammy@sha256:801b7e1a9c4befaf82bf9a2a58025ef43a7694bbc84779187ad0524d84742772 AS builder
 WORKDIR /workspace
 
 # Cache wrapper + build files first (least-changing). Order matters:
@@ -51,7 +55,7 @@ RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
 
 # -------- 2. EXTRACT STAGE --------
 # Run `layertools extract` on the bootJar. Tiny JRE only.
-FROM eclipse-temurin:21-jre-jammy AS extractor
+FROM eclipse-temurin:21-jre-jammy@sha256:199aebeb3adcde4910695cdebfe782ada38dadb6cc8013159b58d3724451befd AS extractor
 WORKDIR /extract
 # Project artifact is multistate-<version>.jar (rootProject.name = 'multistate'),
 # copied out of the builder's build cache mount to /staging.
@@ -70,7 +74,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
 
 # -------- 3. RUNTIME STAGE --------
 # Distroless JRE. No shell, no package manager, no user-management tools.
-FROM gcr.io/distroless/java21-debian12:nonroot AS runtime
+FROM gcr.io/distroless/java21-debian12:nonroot@sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d AS runtime
 
 ARG APP_VERSION=0.0.0
 ARG GIT_SHA=unset
