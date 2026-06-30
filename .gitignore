@@ -13,3 +13,6 @@ secrets/*
 # Local-dev env (commit the .example template only)
 envs/*.env
 !envs/*.env.example
+
+# Compose smoke / CI failure artifact
+compose-logs.txt

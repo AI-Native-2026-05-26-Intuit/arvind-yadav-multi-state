@@ -1,0 +1,71 @@
+# .github/workflows/compose-ci.yml
+#
+# Repo-layout note: in this repo the multistate-api module IS the root
+# (Gradle build + src/ live at the root; multistate-web/ is the W4 React
+# frontend, with its own CI workflow). The course spec's path filter
+# uses `multistate-api/**`; mapped here to `src/**` + build.gradle +
+# settings.gradle, plus the W5 D2 compose-stack files.
+name: multistate-api compose-ci
+
+on:
+  pull_request:
+    paths:
+      - 'compose.yaml'
+      - 'compose.override.yaml'
+      - 'compose.profiles.yaml'
+      - 'envs/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - 'src/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'Dockerfile'
+      - '.github/workflows/compose-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compose-up-smoke:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    env:
+      COMPOSE_PROJECT_NAME: multistate_dev_ci_${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # CI does NOT have the engineer's envs/secrets on disk - write them
+      # here from values acceptable for ephemeral CI use only.
+      - name: Seed envs + secrets for CI
+        run: |
+          mkdir -p envs secrets
+          cp envs/multistate.env.example envs/multistate.env
+          printf '%s' "$CI_PG_PASSWORD" > secrets/pg_password.txt
+        env:
+          CI_PG_PASSWORD: ${{ secrets.CI_PG_PASSWORD }}
+
+      - name: Validate compose.yaml schema
+        run: docker compose config --quiet
+
+      - name: Compose up --wait
+        run: docker compose up -d --wait --wait-timeout 120
+
+      - name: Smoke
+        run: ./scripts/smoke.sh
+
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --no-color --tail=500 > compose-logs.txt
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: compose-logs
+          path: compose-logs.txt
+          retention-days: 14
+
+      - name: Tear down (always)
+        if: always()
+        run: docker compose down --volumes --remove-orphans
