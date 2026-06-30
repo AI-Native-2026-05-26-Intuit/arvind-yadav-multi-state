@@ -61,3 +61,13 @@ docker compose --profile dev down
 Postgres, Redis, and Kafka stay up unless you also `docker compose down`
 on the base file — by design, since cold-starting Kafka is the slowest
 part of the cycle.
+
+## See also
+
+- `make smoke` — boot the full stack, run three HTTP checks, tear down. CI
+  uses the same script ([scripts/smoke.sh](smoke.sh)).
+- `make nuke` — wipe named volumes + locally-built images (forces a Flyway
+  clean slate on the next `make up`).
+- [`compose.profiles.yaml`](../compose.profiles.yaml) — `test` / `e2e` /
+  `observability` sidecars (Jaeger UI lands on http://localhost:16686 once
+  the `observability` profile is active).
