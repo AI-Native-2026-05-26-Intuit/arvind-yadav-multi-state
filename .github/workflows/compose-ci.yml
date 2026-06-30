@@ -47,6 +47,27 @@ jobs:
       - name: Validate compose.yaml schema
         run: docker compose config --quiet
 
+      # The W5 D1 docker workflow doesn't push anywhere yet (the ECR push
+      # path is documented as out-of-scope for now), so the image
+      # uptimecrew/multistate-api:${APP_VERSION} doesn't exist in any
+      # registry. Build it locally on the runner so `compose up` finds
+      # it. Switch to a `docker pull` once an image-publish path lands.
+      - name: Build multistate-api image for compose
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build multistate-api:0.1.0
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: uptimecrew/multistate-api:0.1.0
+          build-args: |
+            APP_VERSION=0.1.0
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
       - name: Compose up --wait
         run: docker compose up -d --wait --wait-timeout 120
 
