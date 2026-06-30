@@ -26,9 +26,27 @@ repositories {
 // in 1.59). Import the OTel BOM through the plugin itself so its versions
 // win over Boot's. Pin to 1.62.0: 1.63.0 removed io.opentelemetry.api.internal.InstrumentationUtil,
 // still referenced by opentelemetry-jdbc 2.28.1-alpha's SpanSuppressors.
+//
+// W5 D1 — Trivy HIGH/CRITICAL CVE overrides. Spring Boot 4.0.6's BOM pins
+// jackson-databind / netty / tomcat-embed-core / spring-kafka at versions
+// flagged by Trivy on 2026-06-30. Force the patched lines via the netty
+// BOM + dependencies block. Revisit on every Boot patch bump.
 dependencyManagement {
     imports {
         mavenBom 'io.opentelemetry:opentelemetry-bom:1.62.0'
+        mavenBom 'io.netty:netty-bom:4.2.15.Final'
+    }
+    dependencies {
+        // jackson-databind 2.x — CVE-2026-54512, CVE-2026-54513 fixed in 2.21.4.
+        dependency 'com.fasterxml.jackson.core:jackson-databind:2.21.4'
+        // jackson-databind 3.x (Jackson 3 line, pulled in by mcp-json-jackson3
+        // through spring-ai-starter-mcp-server-webmvc) — same CVEs, fixed in 3.1.4.
+        dependency 'tools.jackson.core:jackson-databind:3.1.4'
+        // tomcat-embed-core — 3 CRITICAL + 5 HIGH CVEs (CVE-2026-41293,
+        // CVE-2026-43512, CVE-2026-43515, …) fixed in 11.0.22.
+        dependency 'org.apache.tomcat.embed:tomcat-embed-core:11.0.22'
+        // spring-kafka — CVE-2026-41731 (insecure deserialization) fixed in 4.0.6.
+        dependency 'org.springframework.kafka:spring-kafka:4.0.6'
     }
 }
 
@@ -37,7 +55,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'      // brings the embedded Tomcat for Actuator
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     runtimeOnly    'org.springframework.boot:spring-boot-starter-jdbc'     // wires HikariCP + DataSource
-    runtimeOnly    'org.postgresql:postgresql:42.7.3'                      // from W2 D2
+    runtimeOnly    'org.postgresql:postgresql:42.7.11'                      // from W2 D2
 
     // ── NEW for W2 D4: Spring Data JPA ─────────────────────────────────
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -64,7 +82,7 @@ dependencies {
     testImplementation platform('org.testcontainers:testcontainers-bom:1.19.7')
     testImplementation 'org.testcontainers:postgresql'
     testImplementation 'org.testcontainers:junit-jupiter'
-    testImplementation 'org.postgresql:postgresql:42.7.3'
+    testImplementation 'org.postgresql:postgresql:42.7.11'
 
     // Add to dependencies { ... } in build.gradle, alongside your W2 D4 lines.
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
