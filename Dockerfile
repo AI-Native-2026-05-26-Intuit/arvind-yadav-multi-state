@@ -66,7 +66,7 @@ RUN java -Djarmode=layertools -jar app.jar extract --destination .
 # Distroless has no shell/curl/wget, so the HEALTHCHECK cannot be a shell line.
 # Compile a tiny static, dependency-free Go probe (stdlib only) that GETs the
 # readiness endpoint and exits 0/1. Discarded after the binary is produced.
-FROM golang:1.23-alpine AS healthcheck
+FROM golang:1.25-alpine AS healthcheck
 WORKDIR /src
 COPY docker/healthcheck/go.mod ./
 COPY docker/healthcheck/main.go ./
