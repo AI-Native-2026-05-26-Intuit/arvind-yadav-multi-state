@@ -68,6 +68,20 @@ jobs:
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
+      # Export the built image as a workflow artifact. Lets engineers
+      # whose laptops sit behind a corporate TLS-intercepting proxy (which
+      # blocks `docker build` from reaching services.gradle.org) skip the
+      # local build entirely: download the tarball, `docker load` it,
+      # then `make smoke` works. 1-day retention keeps storage bounded.
+      - name: Export image as artifact
+        run: docker save uptimecrew/multistate-api:0.1.0 | gzip > multistate-api-0.1.0.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: multistate-api-image
+          path: multistate-api-0.1.0.tar.gz
+          retention-days: 1
+
       - name: Compose up --wait
         run: docker compose up -d --wait --wait-timeout 120
 
