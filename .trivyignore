@@ -1,0 +1,11 @@
+# Trivy waivers — each entry MUST be dated and scoped. See docker/SECURITY.md
+# "Scan findings & waivers" for the full rationale and review date.
+
+# CVE-2026-41254 — liblcms2 (Little CMS) in the distroless runtime base.
+# Fixed upstream in Debian 12 as 2.14-2+deb12u1; the pinned distroless
+# java21-debian12:nonroot digest predates that rebuild. liblcms2 is dragged in
+# by the JRE's java.desktop image I/O codecs, which this headless API never
+# invokes — not reachable. Clears automatically on the monthly base digest
+# refresh.
+# Added: 2026-06-29  Review by: 2026-07-31
+CVE-2026-41254

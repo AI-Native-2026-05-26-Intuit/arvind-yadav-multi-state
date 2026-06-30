@@ -1,1 +1,11 @@
+// Toolchain auto-provisioning: the project pins a Java 17 toolchain
+// (build.gradle), but the Docker builder stage runs on eclipse-temurin:21-jdk.
+// Without a download repository Gradle cannot supply a matching JDK 17 and the
+// in-container bootJar fails. The Foojay resolver lets Gradle fetch JDK 17 when
+// no locally-installed toolchain matches — a no-op on hosts that already have
+// JDK 17 installed.
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 rootProject.name = 'multistate'
