@@ -32,18 +32,8 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: multistate_dev_ci_${{ github.run_id }}
       # compose.yaml uses ${APP_VERSION:?...} fail-fast on the app image
-      # tag. Set it once at job scope so every compose invocation in this
-      # job (config, up, down, smoke via scripts/smoke.sh) inherits it.
+      # tag. Set it once at job scope so every compose invocation inherits it.
       APP_VERSION: "0.1.0"
-      # Force compose to use the base file only. By default compose v2
-      # auto-merges compose.override.yaml when it sits next to compose.yaml,
-      # which is the engineer-laptop convenience layer (JDWP, profile=dev,
-      # bind-mount of the repo into the container). Those are noise / a
-      # foot-gun on a clean CI runner - profile=dev in particular makes
-      # the YAML overlay we mount via additional-location load with the
-      # wrong precedence vs. the in-jar application.yml. CI gets the
-      # exact base stack.
-      COMPOSE_FILE: compose.yaml
     steps:
       - uses: actions/checkout@v4
 

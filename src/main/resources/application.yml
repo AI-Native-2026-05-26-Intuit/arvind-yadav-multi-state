@@ -46,7 +46,13 @@ spring:
       # Stop+remove:   docker stop uc-mongo && docker rm uc-mongo
       # Restart:       docker start uc-mongo
       # ───────────────────────────────────────────────────────────────────
-      uri: mongodb://localhost:27017/multistate      # (1) placeholder; tests inject via @ServiceConnection
+      # Wrapped in a ${VAR:default} placeholder so compose / k8s can override
+      # via env without fighting Spring Boot 4's MongoProperties URI binding,
+      # which (unlike DataSourceProperties) doesn't honour the standard
+      # SPRING_DATA_MONGODB_URI relaxed-env-var mapping reliably. Tests still
+      # override via @ServiceConnection; the default value below is what
+      # `./gradlew bootRun` uses against a host-mode mongo container.
+      uri: ${MONGO_URI:mongodb://localhost:27017/multistate}
       auto-index-creation: true                      # (2) create @Indexed indexes on startup
     redis:
       # ───────────────────────────────────────────────────────────────────
