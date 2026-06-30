@@ -108,9 +108,19 @@ jobs:
 
       - name: Smoke test - boot, health, kill
         run: |
+          # Overrides vs. application.yml `local` profile defaults:
+          # * DB URL: app expects :5433 (host SSH tunnel takes :5432); the
+          #   postgres service container above publishes on :5432.
+          # * Kafka: no service container is provisioned for the smoke step,
+          #   so the auto-started listener would loop on connect retries and
+          #   the Kafka HealthIndicator would flunk the aggregate /actuator/health.
+          #   Disable both: listener auto-startup off + Kafka health indicator off.
           docker run -d --name multistate-smoke --network host \
             -e OTEL_SDK_DISABLED=true \
             -e SPRING_FLYWAY_ENABLED=false \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/postgres \
+            -e SPRING_KAFKA_LISTENER_AUTO_STARTUP=false \
+            -e MANAGEMENT_HEALTH_KAFKA_ENABLED=false \
             uptimecrew/multistate-api:ci-${{ github.run_id }}
 
           # Probe the public /actuator/health aggregate: the resource server
