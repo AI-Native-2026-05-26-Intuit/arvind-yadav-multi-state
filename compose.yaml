@@ -8,7 +8,7 @@ name: multistate_dev
 services:
   # ----- application under test -------------------------------------
   multistate-api:
-    image: uptimecrew/multistate-api:0.1.0
+    image: uptimecrew/multistate-api:${APP_VERSION:?APP_VERSION required}
     networks: [multistate_net]
     ports:
       - "8080:8080"
