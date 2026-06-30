@@ -31,6 +31,10 @@ jobs:
     timeout-minutes: 12
     env:
       COMPOSE_PROJECT_NAME: multistate_dev_ci_${{ github.run_id }}
+      # compose.yaml uses ${APP_VERSION:?...} fail-fast on the app image
+      # tag. Set it once at job scope so every compose invocation in this
+      # job (config, up, down, smoke via scripts/smoke.sh) inherits it.
+      APP_VERSION: "0.1.0"
     steps:
       - uses: actions/checkout@v4
 
