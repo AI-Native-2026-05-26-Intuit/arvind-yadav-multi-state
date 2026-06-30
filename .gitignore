@@ -5,3 +5,7 @@ out/
 .vscode/
 *.iml
 bin/
+
+# Local-dev secrets (compose secrets:)
+secrets/*
+!secrets/.gitkeep
