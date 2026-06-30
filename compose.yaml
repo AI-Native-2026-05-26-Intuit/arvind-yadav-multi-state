@@ -12,16 +12,26 @@ services:
     networks: [multistate_net]
     ports:
       - "8080:8080"
+    # The Mongo URI is passed as a Spring Boot CLI argument because
+    # SPRING_DATA_MONGODB_URI as an env var does NOT override the
+    # in-jar application.yml `spring.data.mongodb.uri` value on
+    # Spring Boot 4 + Spring Data MongoDB 5 (we verified env binding
+    # works for SPRING_DATASOURCE_URL / SPRING_DATA_REDIS_HOST /
+    # SPRING_KAFKA_BOOTSTRAP_SERVERS but not for the mongo URI).
+    # CLI args sit at the highest property precedence in Boot, above
+    # both env vars and YAML. The image entrypoint is exec-form
+    # `java org.springframework.boot.loader.launch.JarLauncher`, so
+    # trailing args here become Spring Boot CLI args.
+    command:
+      - "--spring.data.mongodb.uri=mongodb://mongo:27017/multistate"
     env_file:
       - ./envs/multistate.env
     environment:
       SPRING_PROFILES_ACTIVE: local
-      # Service-DNS overrides for the four backing services. Each lines up
-      # with the application.yml key it shadows (postgres :5433->5432,
-      # localhost->service name).
+      # Service-DNS overrides for the other three backing services (these
+      # bind correctly as env vars; only mongo needed the CLI escape hatch).
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
       SPRING_DATASOURCE_USERNAME: multistate_dev
-      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/multistate
       SPRING_DATA_REDIS_HOST: redis
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # Postgres password comes from a Docker secret mounted at
