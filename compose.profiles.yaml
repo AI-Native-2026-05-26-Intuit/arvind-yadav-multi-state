@@ -29,9 +29,11 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
       SPRING_DATASOURCE_USERNAME: multistate_dev
-      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/pg_password
+      # See compose.yaml note: configtree maps file -> spring.datasource.password
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
     secrets:
-      - pg_password
+      - source: pg_password
+        target: spring.datasource.password
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"

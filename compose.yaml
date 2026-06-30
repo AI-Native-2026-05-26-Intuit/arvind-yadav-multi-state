@@ -18,15 +18,25 @@ services:
       SPRING_PROFILES_ACTIVE: local
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
       SPRING_DATASOURCE_USERNAME: multistate_dev
-      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/pg_password
+      # Spring Boot's configtree property source maps each file under the
+      # named directory to a property. So /run/secrets/spring.datasource.password
+      # binds to spring.datasource.password without us ever putting the
+      # value in an env var. Distroless-safe (no shell shim needed).
+      # See: https://docs.spring.io/spring-boot/reference/features/external-config.html#features.external-config.files.configtree
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
       SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_MONGODB_URI: "mongodb://mongo:27017/multistate"
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # No OTel collector in the base stack (observability profile adds one).
+      OTEL_SDK_DISABLED: "true"
     secrets:
-      - pg_password
+      - source: pg_password
+        target: spring.datasource.password
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
       kafka:    { condition: service_healthy }
+      mongo:    { condition: service_healthy }
     restart: unless-stopped
 
   # ----- primary data store -----------------------------------------
@@ -41,8 +51,43 @@ services:
       - pg_password
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Run V1/V2/V3 SQL files once on first DB init. Postgres only invokes
+      # files in /docker-entrypoint-initdb.d when the data dir is empty,
+      # so this is a one-shot bootstrap (matches what the W5 D1 docker CI
+      # workflow does in its explicit "Load DB schema" step).
+      - type: bind
+        source: ./db/V1__schema.sql
+        target: /docker-entrypoint-initdb.d/V1__schema.sql
+        read_only: true
+      - type: bind
+        source: ./db/V2__seed.sql
+        target: /docker-entrypoint-initdb.d/V2__seed.sql
+        read_only: true
+      - type: bind
+        source: ./db/V3__event_outbox.sql
+        target: /docker-entrypoint-initdb.d/V3__event_outbox.sql
+        read_only: true
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U multistate_dev -d multistate_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ----- read-model store (W2 D5 polyglot read side) ----------------
+  # The W5 D2 spec listed only 4 services, but the multistate-api app
+  # requires Mongo for its TenantReadModel (added in W2 D5). Adding it
+  # here is a documented deviation; without it the app fails to start
+  # because the Mongo HealthIndicator and the read-model auto-config
+  # both expect a reachable broker.
+  mongo:
+    image: mongo:7
+    networks: [multistate_net]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' | grep -q 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -62,7 +107,7 @@ services:
 
   # ----- event backbone (KRaft mode, no Zookeeper) ------------------
   kafka:
-    image: apache/kafka:3.7
+    image: apache/kafka:3.9.2
     networks: [multistate_net]
     environment:
       KAFKA_NODE_ID: 1
@@ -93,6 +138,7 @@ networks:
 volumes:
   pgdata: {}
   kafka-data: {}
+  mongo-data: {}
 
 secrets:
   pg_password:
