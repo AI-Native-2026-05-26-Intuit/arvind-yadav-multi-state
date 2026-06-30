@@ -12,23 +12,31 @@ services:
     networks: [multistate_net]
     ports:
       - "8080:8080"
+    # All service-DNS-name overrides (postgres / mongo / redis / kafka)
+    # live in envs/application-compose.yml because env-var binding for
+    # spring.data.mongodb.uri didn't displace the in-jar application.yml
+    # default in Boot 4 + Spring Data Mongo 5. additional-location files
+    # sit ABOVE the in-jar YAML in ConfigData precedence so the overlay
+    # deterministically wins. The image entrypoint is exec-form
+    # `java org.springframework.boot.loader.launch.JarLauncher`, so
+    # trailing args here become Spring Boot CLI args.
+    command:
+      - "--spring.config.additional-location=file:/config/application-compose.yml"
+    volumes:
+      - type: bind
+        source: ./envs/application-compose.yml
+        target: /config/application-compose.yml
+        read_only: true
     env_file:
       - ./envs/multistate.env
     environment:
       SPRING_PROFILES_ACTIVE: local
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
-      SPRING_DATASOURCE_USERNAME: multistate_dev
-      # Spring Boot's configtree property source maps each file under the
-      # named directory to a property. So /run/secrets/spring.datasource.password
-      # binds to spring.datasource.password without us ever putting the
-      # value in an env var. Distroless-safe (no shell shim needed).
+      # Postgres password comes from a Docker secret mounted at
+      # /run/secrets/spring.datasource.password and loaded via Spring
+      # Boot's configtree property source - distroless-safe, file-only,
+      # zero plaintext in this YAML.
       # See: https://docs.spring.io/spring-boot/reference/features/external-config.html#features.external-config.files.configtree
       SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_MONGODB_URI: "mongodb://mongo:27017/multistate"
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      # No OTel collector in the base stack (observability profile adds one).
-      OTEL_SDK_DISABLED: "true"
     secrets:
       - source: pg_password
         target: spring.datasource.password
