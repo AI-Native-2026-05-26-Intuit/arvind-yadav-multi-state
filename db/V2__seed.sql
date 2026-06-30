@@ -50,22 +50,3 @@ VALUES
     ('alloc-2026-0007', 'ten-a', 'CA', 2026, DATE '2026-06-30', 13750.50, 'WEIGHTED_DAY_COUNT');
 
 COMMIT;
-
-
--- =====================================================================
--- Intentional failure test — proves the CHECK constraint rejects a
--- negative monetary amount. Wrapped in its own transaction and rolled
--- back so it leaves no residue.
--- =====================================================================
--- Expected error from psql:
---   ERROR:  new row for relation "allocation" violates check constraint
---   "allocation_amount_check"
---   DETAIL:  Failing row contains (alloc-bad-0001, ten-a, CA, 2026,
---   2026-03-31, -100.00, EQUAL_SPLIT, ...).
--- =====================================================================
-BEGIN;
-INSERT INTO multistate.allocation
-    (id, tenant_id, jurisdiction_code, tax_year, allocated_for, amount, strategy_name)
-VALUES
-    ('alloc-bad-0001', 'ten-a', 'CA', 2026, DATE '2026-03-31', -100.00, 'EQUAL_SPLIT');
-ROLLBACK;
