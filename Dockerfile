@@ -84,8 +84,14 @@ RUN java -Djarmode=layertools -jar app.jar extract --destination .
 # readiness endpoint and exits 0/1. Discarded after the binary is produced.
 FROM golang:1.25-alpine AS healthcheck
 WORKDIR /src
-# Same optional corporate CA hook as the builder stage. Alpine uses
-# /usr/local/share/ca-certificates + update-ca-certificates from ca-certificates.
+# Optional corporate CA hook (same as the builder stage). Alpine uses
+# /usr/local/share/ca-certificates + update-ca-certificates from the
+# ca-certificates package. ca-certificates is left unpinned because (a)
+# it is the only package installed, (b) only inside the opt-in corp-CA
+# branch, and (c) pinning would break the build on every Alpine patch
+# without improving reproducibility (parent image's apk index is itself
+# unpinned).
+# hadolint ignore=DL3018
 RUN --mount=type=secret,id=corp_ca,target=/tmp/corp_ca.pem \
     if [ -s /tmp/corp_ca.pem ]; then \
       apk add --no-cache ca-certificates && \
