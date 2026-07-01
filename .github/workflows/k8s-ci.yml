@@ -17,6 +17,7 @@ on:
       - 'Dockerfile'
       - 'docker/**'
       - '.github/workflows/k8s-ci.yml'
+      - '.github/k8s/**'
 
 permissions:
   contents: read
@@ -27,7 +28,7 @@ env:
 jobs:
   manifests-validate-and-deploy:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -80,21 +81,51 @@ jobs:
           sed -i "s|uptimecrew/multistate-api:0.1.1|uptimecrew/multistate-api:${{ github.sha }}|g" \
             manifests/10-multistate-api.deployment.yaml
 
+      # ----- 3. Namespace, secret, backing services ------------------
+      - name: Apply namespace
+        run: kubectl apply -f manifests/00-namespace.yaml
+
       - name: Seed Secret from CI value (NOT from the committed placeholder)
         run: |
-          kubectl create namespace multistate-dev || true
           kubectl create secret generic multistate-api-secrets \
             -n multistate-dev \
-            --from-literal=SPRING_DATASOURCE_PASSWORD="$CI_PG_PASSWORD" \
+            --from-literal=SPRING_DATASOURCE_PASSWORD="${CI_PG_PASSWORD:-ci-dev-only-password}" \
             --dry-run=client -o yaml | kubectl apply -f -
         env:
           CI_PG_PASSWORD: ${{ secrets.CI_PG_PASSWORD }}
 
-      # ----- 3. Server-side admission + apply ------------------------
+      - name: Create postgres init ConfigMap
+        run: |
+          kubectl create configmap postgres-init-sql \
+            -n multistate-dev \
+            --from-file=db/V1__schema.sql \
+            --from-file=db/V2__seed.sql \
+            --from-file=db/V3__event_outbox.sql \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy CI backing services
+        run: kubectl apply -f .github/k8s/ci-backing-services.yaml
+
+      - name: Wait for backing services
+        run: |
+          kubectl wait --for=condition=available deployment/postgres -n multistate-dev --timeout=180s
+          kubectl wait --for=condition=available deployment/redis -n multistate-dev --timeout=120s
+          kubectl wait --for=condition=available deployment/mongo -n multistate-dev --timeout=120s
+          kubectl wait --for=condition=available deployment/kafka -n multistate-dev --timeout=180s
+
+      - name: Install ingress-nginx
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=180s
+
+      # ----- 4. Server-side admission + apply ------------------------
       - name: Server-side dry-run
         run: kubectl apply -f manifests/ --dry-run=server
 
-      - name: Apply
+      - name: Apply application manifests
         run: kubectl apply -f manifests/
 
       - name: Re-seed Secret (overwrite committed placeholder from apply)
@@ -106,21 +137,34 @@ jobs:
         env:
           CI_PG_PASSWORD: ${{ secrets.CI_PG_PASSWORD }}
 
+      - name: Patch ConfigMap for CI runtime deps
+        run: |
+          kubectl patch configmap multistate-api-config -n multistate-dev --type merge -p '{
+            "data": {
+              "SPRING_MONGODB_URI": "mongodb://mongo.multistate-dev.svc.cluster.local:27017/statetrack",
+              "OTEL_SDK_DISABLED": "true",
+              "SPRING_KAFKA_LISTENER_AUTO_STARTUP": "false",
+              "MANAGEMENT_HEALTH_KAFKA_ENABLED": "false"
+            }
+          }'
+          kubectl rollout restart deploy/multistate-api -n multistate-dev
+
       - name: Wait for rollout (gates the build)
         run: |
           kubectl rollout status \
             deploy/multistate-api -n multistate-dev --timeout=8m
 
-      # ----- 4. Smoke ------------------------------------------------
+      # ----- 5. Smoke ------------------------------------------------
       - name: Smoke test through the Ingress
         run: ./scripts/k8s-smoke.sh
 
-      # ----- 5. Diagnostics on failure -------------------------------
+      # ----- 6. Diagnostics on failure -------------------------------
       - name: Capture diagnostics on failure
         if: failure()
         run: |
           kubectl get all -n multistate-dev
           kubectl describe deploy/multistate-api -n multistate-dev
+          kubectl describe pod -n multistate-dev -l app.kubernetes.io/name=multistate-api
           kubectl logs deploy/multistate-api -n multistate-dev \
             --tail=200 > pod-logs.txt || true
 
