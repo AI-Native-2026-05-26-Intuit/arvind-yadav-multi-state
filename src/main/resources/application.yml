@@ -36,6 +36,15 @@ spring:
     password: ${DB_PASSWORD:devpass}
     hikari:
       maximum-pool-size: 5
+  mongodb:
+  # Boot 4 reads the Mongo *connection* URI from spring.mongodb.uri — the
+  # connection props moved out of spring.data.mongodb.* (which now holds only
+  # repository-level settings like auto-index-creation). Binding the URI here
+  # means env SPRING_MONGODB_URI or --spring.mongodb.uri overrides it
+  # (12-factor III: config from the environment, not baked in). Local dev
+  # defaults to an auth-less Mongo on 27017; tests override via
+  # @ServiceConnection (container) or application-test.yml.
+  uri: mongodb://localhost:27017/statetrack
   data:
     mongodb:
       # ───────────────────────────────────────────────────────────────────
@@ -46,7 +55,7 @@ spring:
       # Stop+remove:   docker stop uc-mongo && docker rm uc-mongo
       # Restart:       docker start uc-mongo
       # ───────────────────────────────────────────────────────────────────
-      uri: mongodb://localhost:27017/multistate      # local default; SPRING_DATA_MONGODB_URI overrides in compose; tests use @ServiceConnection
+      # uri: mongodb://localhost:27017/multistate      # local default; SPRING_DATA_MONGODB_URI overrides in compose; tests use @ServiceConnection
       auto-index-creation: true                      # (2) create @Indexed indexes on startup
     redis:
       # ───────────────────────────────────────────────────────────────────
