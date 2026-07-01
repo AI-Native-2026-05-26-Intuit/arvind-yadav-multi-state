@@ -21,6 +21,9 @@ on:
 permissions:
   contents: read
 
+env:
+  K3D_VERSION: v5.8.3
+
 jobs:
   manifests-validate-and-deploy:
     runs-on: ubuntu-22.04
@@ -52,11 +55,22 @@ jobs:
             APP_VERSION=${{ github.sha }}
             GIT_SHA=${{ github.sha }}
 
-      - name: Spin up k3d cluster
-        uses: AbsaOSS/k3d-action@v2
-        with:
-          cluster-name: multistate-ci
-          args: --servers 1 --agents 2 --port "8080:80@loadbalancer"
+      - name: Install k3d
+        # AbsaOSS/k3d-action@v2 install.sh hits raw.githubusercontent.com 404/503
+        # on GitHub-hosted runners; fetch the release binary directly instead.
+        run: |
+          curl -fsSL \
+            "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64" \
+            -o /usr/local/bin/k3d
+          chmod +x /usr/local/bin/k3d
+          k3d version
+
+      - name: Create k3d cluster
+        run: |
+          k3d cluster create multistate-ci \
+            --servers 1 --agents 2 \
+            --port "8080:80@loadbalancer" \
+            --wait
 
       - name: Import image into the cluster
         run: k3d image import uptimecrew/multistate-api:${{ github.sha }} -c multistate-ci
@@ -116,3 +130,7 @@ jobs:
           name: k8s-diagnostics
           path: pod-logs.txt
           retention-days: 14
+
+      - name: Delete k3d cluster
+        if: always()
+        run: k3d cluster delete multistate-ci || true
