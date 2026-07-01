@@ -71,6 +71,7 @@ jobs:
           k3d cluster create multistate-ci \
             --servers 1 --agents 2 \
             --port "8080:80@loadbalancer" \
+            --k3s-arg "--disable=traefik@server:0" \
             --wait
 
       - name: Import image into the cluster
@@ -120,6 +121,10 @@ jobs:
             --for=condition=ready pod \
             --selector=app.kubernetes.io/component=controller \
             --timeout=180s
+          # k3d routes :80@loadbalancer to the ingress-nginx LB service.
+          kubectl wait --namespace ingress-nginx \
+            --for=jsonpath='{.status.loadBalancer.ingress}' \
+            service/ingress-nginx-controller --timeout=120s
 
       # ----- 4. Server-side admission + apply ------------------------
       - name: Server-side dry-run
