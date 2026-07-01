@@ -37,14 +37,14 @@ spring:
     hikari:
       maximum-pool-size: 5
   mongodb:
-  # Boot 4 reads the Mongo *connection* URI from spring.mongodb.uri — the
-  # connection props moved out of spring.data.mongodb.* (which now holds only
-  # repository-level settings like auto-index-creation). Binding the URI here
-  # means env SPRING_MONGODB_URI or --spring.mongodb.uri overrides it
-  # (12-factor III: config from the environment, not baked in). Local dev
-  # defaults to an auth-less Mongo on 27017; tests override via
-  # @ServiceConnection (container) or application-test.yml.
-  uri: mongodb://localhost:27017/statetrack
+    # Boot 4 reads the Mongo *connection* URI from spring.mongodb.uri — the
+    # connection props moved out of spring.data.mongodb.* (which now holds only
+    # repository-level settings like auto-index-creation). Binding the URI here
+    # means env SPRING_MONGODB_URI or --spring.mongodb.uri overrides it
+    # (12-factor III: config from the environment, not baked in). Local dev
+    # defaults to an auth-less Mongo on 27017; tests override via
+    # @ServiceConnection (container) or application-test.yml.
+    uri: mongodb://localhost:27017/statetrack
   data:
     mongodb:
       # ───────────────────────────────────────────────────────────────────
