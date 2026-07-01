@@ -23,22 +23,6 @@
 FROM eclipse-temurin:21-jdk-jammy@sha256:801b7e1a9c4befaf82bf9a2a58025ef43a7694bbc84779187ad0524d84742772 AS builder
 WORKDIR /workspace
 
-# Optional corporate CA injection. Engineers behind a TLS-intercepting proxy
-# (Zscaler / Bluecoat / Netskope / …) pass --secret id=corp_ca,src=~/zscaler-root.pem
-# at build time. CI doesn't sit behind such a proxy, so the secret mount is
-# absent there and this RUN is a no-op (the `[ -s … ]` guard short-circuits).
-# Trust store updates apply to BOTH the OS (for curl / apt) AND the JDK
-# (for Gradle's HTTPS resolution against services.gradle.org and Maven Central).
-RUN --mount=type=secret,id=corp_ca,target=/tmp/corp_ca.pem \
-    if [ -s /tmp/corp_ca.pem ]; then \
-      install -m 0644 /tmp/corp_ca.pem /usr/local/share/ca-certificates/corp.crt && \
-      update-ca-certificates && \
-      keytool -importcert -noprompt -alias corp-proxy \
-              -file /tmp/corp_ca.pem \
-              -keystore "$JAVA_HOME/lib/security/cacerts" \
-              -storepass changeit ; \
-    fi
-
 # Cache wrapper + build files first (least-changing). Order matters:
 # wrapper/gradle dir, then build files, THEN dependency pre-warm, THEN src.
 COPY gradlew gradlew.bat ./
@@ -84,20 +68,6 @@ RUN java -Djarmode=layertools -jar app.jar extract --destination .
 # readiness endpoint and exits 0/1. Discarded after the binary is produced.
 FROM golang:1.25-alpine AS healthcheck
 WORKDIR /src
-# Optional corporate CA hook (same as the builder stage). Alpine uses
-# /usr/local/share/ca-certificates + update-ca-certificates from the
-# ca-certificates package. ca-certificates is left unpinned because (a)
-# it is the only package installed, (b) only inside the opt-in corp-CA
-# branch, and (c) pinning would break the build on every Alpine patch
-# without improving reproducibility (parent image's apk index is itself
-# unpinned).
-# hadolint ignore=DL3018
-RUN --mount=type=secret,id=corp_ca,target=/tmp/corp_ca.pem \
-    if [ -s /tmp/corp_ca.pem ]; then \
-      apk add --no-cache ca-certificates && \
-      install -m 0644 /tmp/corp_ca.pem /usr/local/share/ca-certificates/corp.crt && \
-      update-ca-certificates ; \
-    fi
 COPY docker/healthcheck/go.mod ./
 COPY docker/healthcheck/main.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .

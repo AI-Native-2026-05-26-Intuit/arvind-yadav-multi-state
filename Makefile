@@ -19,8 +19,8 @@ ps: ## Show service + health state.
 smoke: ## Run the team smoke script.
 	./scripts/smoke.sh
 
-dev: ## Bring up backing services only; app runs on host via `./gradlew bootRun --continuous`. See scripts/dev.md.
-	docker compose up -d --wait --wait-timeout 90 postgres mongo redis kafka
+dev: ## Live-reload profile (requires `./gradlew bootJar --continuous`).
+	docker compose --profile dev up -d --wait --wait-timeout 90 multistate-api-dev
 
 test: ## CI integration profile (boots stack + seed-fixtures + smoke).
 	docker compose --profile test up -d --wait --wait-timeout 120

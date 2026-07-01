@@ -43,12 +43,14 @@ jobs:
         run: |
           mkdir -p envs secrets
           cp envs/multistate.env.example envs/multistate.env
-          printf '%s' "$CI_PG_PASSWORD" > secrets/pg_password.txt
+          # CI_PG_PASSWORD may be empty if the repo secret isn't set; fall
+          # back to a hard-coded dev-only string so Postgres still boots.
+          printf '%s' "${CI_PG_PASSWORD:-ci-dev-only-password}" > secrets/pg_password.txt
         env:
           CI_PG_PASSWORD: ${{ secrets.CI_PG_PASSWORD }}
 
       - name: Validate compose.yaml schema
-        run: docker compose config --quiet
+        run: docker compose -f compose.yaml config --quiet
 
       # The W5 D1 docker workflow doesn't push anywhere yet (the ECR push
       # path is documented as out-of-scope for now), so the image
@@ -85,17 +87,15 @@ jobs:
           path: multistate-api-0.1.0.tar.gz
           retention-days: 1
 
-      - name: Compose up --wait
-        run: docker compose up -d --wait --wait-timeout 120
-
-      - name: Smoke
-        run: ./scripts/smoke.sh
+      # smoke.sh manages its own compose project lifecycle (up → checks → down).
+      # Running it directly avoids a port-8080 conflict that would arise from
+      # a separate "compose up" step. The script exits non-zero on any failure.
+      - name: Smoke (up + health checks + down)
+        run: HOST_PORT=8080 COMPOSE_FILE=compose.yaml ./scripts/smoke.sh
 
       - name: Capture logs on failure
         if: failure()
-        run: |
-          docker compose ps
-          docker compose logs --no-color --tail=500 > compose-logs.txt
+        run: docker compose -f compose.yaml logs --no-color --tail=500 > compose-logs.txt || true
 
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -103,7 +103,3 @@ jobs:
           name: compose-logs
           path: compose-logs.txt
           retention-days: 14
-
-      - name: Tear down (always)
-        if: always()
-        run: docker compose down --volumes --remove-orphans

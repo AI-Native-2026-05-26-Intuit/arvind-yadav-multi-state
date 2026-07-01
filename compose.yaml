@@ -16,21 +16,15 @@ services:
       - ./envs/multistate.env
     environment:
       SPRING_PROFILES_ACTIVE: local
-      # Service-DNS overrides. application.yml's mongo URI uses a
-      # ${MONGO_URI:default} placeholder so the env var below substitutes
-      # cleanly; the other three services bind via the standard Spring
-      # Boot relaxed-env-var mapping.
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
       SPRING_DATASOURCE_USERNAME: multistate_dev
       SPRING_DATA_REDIS_HOST: redis
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       MONGO_URI: mongodb://mongo:27017/multistate
-      # Postgres password comes from a Docker secret mounted at
-      # /run/secrets/spring.datasource.password and loaded via Spring
-      # Boot's configtree property source - distroless-safe, file-only,
-      # zero plaintext in this YAML.
-      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
       OTEL_SDK_DISABLED: "true"
+      # Spring Boot configtree reads /run/secrets/spring.datasource.password
+      # and binds it to spring.datasource.password — works in distroless.
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
     secrets:
       - source: pg_password
         target: spring.datasource.password
@@ -53,10 +47,7 @@ services:
       - pg_password
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Run V1/V2/V3 SQL files once on first DB init. Postgres only invokes
-      # files in /docker-entrypoint-initdb.d when the data dir is empty,
-      # so this is a one-shot bootstrap (matches what the W5 D1 docker CI
-      # workflow does in its explicit "Load DB schema" step).
+      # Bootstrap schema on first init (Postgres only runs these when data dir is empty).
       - type: bind
         source: ./db/V1__schema.sql
         target: /docker-entrypoint-initdb.d/V1__schema.sql
@@ -77,12 +68,7 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # ----- read-model store (W2 D5 polyglot read side) ----------------
-  # The W5 D2 spec listed only 4 services, but the multistate-api app
-  # requires Mongo for its TenantReadModel (added in W2 D5). Adding it
-  # here is a documented deviation; without it the app fails to start
-  # because the Mongo HealthIndicator and the read-model auto-config
-  # both expect a reachable broker.
+  # ----- document store (TenantReadModel requires Mongo) ------------
   mongo:
     image: mongo:7
     networks: [multistate_net]
@@ -109,7 +95,7 @@ services:
 
   # ----- event backbone (KRaft mode, no Zookeeper) ------------------
   kafka:
-    image: apache/kafka:3.9.2
+    image: apache/kafka:3.7
     networks: [multistate_net]
     environment:
       KAFKA_NODE_ID: 1
