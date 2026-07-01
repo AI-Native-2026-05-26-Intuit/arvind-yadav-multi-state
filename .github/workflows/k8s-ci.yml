@@ -1,0 +1,118 @@
+# .github/workflows/k8s-ci.yml
+#
+# Repo-layout note: in this repo the multistate-api module IS the repository
+# root (Gradle build + src/ live at the root; multistate-web/ is the frontend).
+# So the Docker build context is "." and the Dockerfile is ./Dockerfile, rather
+# than the ./multistate-api/ paths in the course reference.
+name: multistate-api k8s-ci
+
+on:
+  pull_request:
+    paths:
+      - 'manifests/**'
+      - 'scripts/k8s-*.sh'
+      - 'src/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'Dockerfile'
+      - 'docker/**'
+      - '.github/workflows/k8s-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  manifests-validate-and-deploy:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # ----- 1. Static validation (no cluster yet) -------------------
+      - name: Install kubeconform
+        run: |
+          curl -sSL \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: kubeconform manifests/
+        run: kubeconform -strict -summary -schema-location default manifests/
+
+      # ----- 2. Spin up k3d ------------------------------------------
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build multistate-api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: uptimecrew/multistate-api:${{ github.sha }}
+          build-args: |
+            APP_VERSION=${{ github.sha }}
+            GIT_SHA=${{ github.sha }}
+
+      - name: Spin up k3d cluster
+        uses: AbsaOSS/k3d-action@v2
+        with:
+          cluster-name: multistate-ci
+          args: --servers 1 --agents 2 --port "8080:80@loadbalancer"
+
+      - name: Import image into the cluster
+        run: k3d image import uptimecrew/multistate-api:${{ github.sha }} -c multistate-ci
+
+      - name: Patch image tag in Deployment manifest
+        run: |
+          sed -i "s|uptimecrew/multistate-api:0.1.1|uptimecrew/multistate-api:${{ github.sha }}|g" \
+            manifests/10-multistate-api.deployment.yaml
+
+      - name: Seed Secret from CI value (NOT from the committed placeholder)
+        run: |
+          kubectl create namespace multistate-dev || true
+          kubectl create secret generic multistate-api-secrets \
+            -n multistate-dev \
+            --from-literal=SPRING_DATASOURCE_PASSWORD="$CI_PG_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        env:
+          CI_PG_PASSWORD: ${{ secrets.CI_PG_PASSWORD }}
+
+      # ----- 3. Server-side admission + apply ------------------------
+      - name: Server-side dry-run
+        run: kubectl apply -f manifests/ --dry-run=server
+
+      - name: Apply
+        run: kubectl apply -f manifests/
+
+      - name: Re-seed Secret (overwrite committed placeholder from apply)
+        run: |
+          kubectl create secret generic multistate-api-secrets \
+            -n multistate-dev \
+            --from-literal=SPRING_DATASOURCE_PASSWORD="${CI_PG_PASSWORD:-ci-dev-only-password}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        env:
+          CI_PG_PASSWORD: ${{ secrets.CI_PG_PASSWORD }}
+
+      - name: Wait for rollout (gates the build)
+        run: |
+          kubectl rollout status \
+            deploy/multistate-api -n multistate-dev --timeout=8m
+
+      # ----- 4. Smoke ------------------------------------------------
+      - name: Smoke test through the Ingress
+        run: ./scripts/k8s-smoke.sh
+
+      # ----- 5. Diagnostics on failure -------------------------------
+      - name: Capture diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get all -n multistate-dev
+          kubectl describe deploy/multistate-api -n multistate-dev
+          kubectl logs deploy/multistate-api -n multistate-dev \
+            --tail=200 > pod-logs.txt || true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: k8s-diagnostics
+          path: pod-logs.txt
+          retention-days: 14
