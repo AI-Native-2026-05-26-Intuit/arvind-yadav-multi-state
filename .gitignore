@@ -16,3 +16,8 @@ envs/*.env
 
 # Compose smoke / CI failure artifact
 compose-logs.txt
+
+# Kubernetes-managed dev state (W5 D3). NEVER commit any of these.
+manifests/*.local.yaml
+pod-logs.txt
+.k3d/
