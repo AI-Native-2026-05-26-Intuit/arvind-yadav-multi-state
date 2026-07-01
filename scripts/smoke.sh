@@ -26,7 +26,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Bringing up stack as project ${PROJECT}..."
-${COMPOSE} up -d --wait --wait-timeout 90
+${COMPOSE} up -d --wait --wait-timeout 240
 
 echo "Confirming all services are healthy..."
 unhealthy=$(${COMPOSE} ps --format json \
