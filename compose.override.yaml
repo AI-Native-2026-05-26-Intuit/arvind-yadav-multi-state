@@ -54,7 +54,7 @@ services:
       SPRING_DATASOURCE_USERNAME: multistate_dev
       SPRING_DATA_REDIS_HOST: redis
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATA_MONGODB_URI: mongodb://mongo:27017/multistate
+      SPRING_MONGODB_URI: mongodb://mongo:27017/statetrack
       SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
     secrets:
       - source: pg_password
