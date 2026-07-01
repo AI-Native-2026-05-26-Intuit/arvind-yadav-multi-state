@@ -17,10 +17,13 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
@@ -46,20 +49,26 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class ApplicationContextLoadIT {
 
     @Container
+    @ServiceConnection
     static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine")
             .waitingFor(Wait.forListeningPort())
             .withStartupTimeout(Duration.ofSeconds(120));
 
+    @Container
+    @ServiceConnection
+    static final MongoDBContainer MONGO = new MongoDBContainer("mongo:7");
+
+    @Container
+    @ServiceConnection(name = "redis")
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
+            .withExposedPorts(6379);
+
     @DynamicPropertySource
-    static void datasourceProperties(DynamicPropertyRegistry registry) throws Exception {
-        // The container is started by the Testcontainers extension before the Spring
-        // context is built. Load the schema + seed here — before Hibernate's
-        // ddl-auto=validate runs — so validation sees the real multistate tables and the
-        // FK target rows (jurisdiction) the persistence test relies on.
+    static void applySchema(DynamicPropertyRegistry ignored) throws Exception {
+        // Load schema + seed before Hibernate's ddl-auto=validate runs so it sees the
+        // real multistate tables and the FK target rows the persistence test relies on.
+        // @ServiceConnection above wires the datasource URL/credentials automatically.
         applySchemaAndSeed();
-        registry.add("spring.datasource.url", PG::getJdbcUrl);
-        registry.add("spring.datasource.username", PG::getUsername);
-        registry.add("spring.datasource.password", PG::getPassword);
     }
 
     // Mirrors TenantQueryIT: apply V1 schema, then V2 seed minus the trailing

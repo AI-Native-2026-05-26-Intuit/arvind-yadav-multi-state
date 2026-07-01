@@ -1,0 +1,133 @@
+# compose.yaml - local-dev stack for multistate-api.
+# Compose v2: no top-level `version:` field.
+# Bring up: docker compose up -d --wait
+# Tear down: docker compose down -v
+
+name: multistate_dev
+
+services:
+  # ----- application under test -------------------------------------
+  multistate-api:
+    image: uptimecrew/multistate-api:${APP_VERSION:?APP_VERSION required}
+    networks: [multistate_net]
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./envs/multistate.env
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
+      SPRING_DATASOURCE_USERNAME: multistate_dev
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_MONGODB_URI: mongodb://mongo:27017/statetrack
+      OTEL_SDK_DISABLED: "true"
+      # Spring Boot configtree reads /run/secrets/spring.datasource.password
+      # and binds it to spring.datasource.password — works in distroless.
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
+    secrets:
+      - source: pg_password
+        target: spring.datasource.password
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+      mongo:    { condition: service_healthy }
+    restart: unless-stopped
+
+  # ----- primary data store -----------------------------------------
+  postgres:
+    image: postgres:16
+    networks: [multistate_net]
+    environment:
+      POSTGRES_DB: multistate_dev
+      POSTGRES_USER: multistate_dev
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets:
+      - pg_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Bootstrap schema on first init (Postgres only runs these when data dir is empty).
+      - type: bind
+        source: ./db/V1__schema.sql
+        target: /docker-entrypoint-initdb.d/V1__schema.sql
+        read_only: true
+      - type: bind
+        source: ./db/V2__seed.sql
+        target: /docker-entrypoint-initdb.d/V2__seed.sql
+        read_only: true
+      - type: bind
+        source: ./db/V3__event_outbox.sql
+        target: /docker-entrypoint-initdb.d/V3__event_outbox.sql
+        read_only: true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multistate_dev -d multistate_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ----- document store (TenantReadModel requires Mongo) ------------
+  mongo:
+    image: mongo:7
+    networks: [multistate_net]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' | grep -q 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ----- cache / session store --------------------------------------
+  redis:
+    image: redis:7
+    networks: [multistate_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ----- event backbone (KRaft mode, no Zookeeper) ------------------
+  kafka:
+    image: apache/kafka:3.9.2
+    networks: [multistate_net]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+networks:
+  multistate_net:
+    driver: bridge
+
+volumes:
+  pgdata: {}
+  kafka-data: {}
+  mongo-data: {}
+
+secrets:
+  pg_password:
+    file: ./secrets/pg_password.txt

@@ -1,0 +1,70 @@
+# compose.override.yaml - local-dev tweaks. Auto-merged by Compose when
+# present alongside compose.yaml. NEVER deployed; this file expresses
+# engineer-laptop convenience, not team-shared behaviour.
+
+services:
+  multistate-api:
+    # Expose JDWP for IntelliJ remote-debug attach.
+    ports:
+      - "8080:8080"
+      - "5005:5005"
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+        -Dspring.devtools.restart.poll-interval=1s
+      SPRING_PROFILES_ACTIVE: dev
+
+  postgres:
+    # Publish 5432 to host only when you want psql / DataGrip from the host.
+    # Keep commented in committed copy; engineers uncomment locally.
+    # ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: multistate_dev
+      POSTGRES_USER: multistate_dev
+
+  # ----- dev-mode live-reload override -------------------------------
+  # Run with: docker compose --profile dev up -d multistate-api-dev
+  # Terminal 1 (host): ./gradlew bootJar --continuous
+  # Terminal 2 (host): docker compose --profile dev logs -f multistate-api-dev
+  #
+  # Repo-layout note: this repo is single-module (the API IS the root
+  # project; rootProject.name = 'multistate'), so the bind source is the
+  # repo root and the JAR glob is multistate-*.jar, not multistate-api-*.jar.
+  multistate-api-dev:
+    profiles: [dev]
+    image: eclipse-temurin:21-jre-jammy
+    networks: [multistate_net]
+    working_dir: /workspace
+    command:
+      - "sh"
+      - "-c"
+      - |
+        java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 \
+             -Dspring.devtools.restart.poll-interval=1s \
+             -Dspring.devtools.restart.quiet-period=400ms \
+             -jar build/libs/multistate-*.jar
+    ports:
+      - "8081:8080"
+      - "5006:5005"
+    env_file:
+      - ./envs/multistate.env
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
+      SPRING_DATASOURCE_USERNAME: multistate_dev
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_MONGODB_URI: mongodb://mongo:27017/statetrack
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
+    secrets:
+      - source: pg_password
+        target: spring.datasource.password
+    volumes:
+      - type: bind
+        source: .
+        target: /workspace
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+      mongo:    { condition: service_healthy }

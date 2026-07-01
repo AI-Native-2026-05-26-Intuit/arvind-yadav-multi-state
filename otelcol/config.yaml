@@ -1,0 +1,31 @@
+# Minimal OpenTelemetry Collector config for local dev / e2e profile.
+# Receives OTLP from the app (gRPC :4317, HTTP :4318), forwards traces to
+# the in-stack Jaeger all-in-one's OTLP gRPC endpoint, drops metrics + logs
+# since Jaeger all-in-one only accepts traces (W3 D5 sticking point).
+#
+# Full-fat W5 D5 config supersedes this when it lands.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]

@@ -1,0 +1,105 @@
+# .github/workflows/compose-ci.yml
+#
+# Repo-layout note: in this repo the multistate-api module IS the root
+# (Gradle build + src/ live at the root; multistate-web/ is the W4 React
+# frontend, with its own CI workflow). The course spec's path filter
+# uses `multistate-api/**`; mapped here to `src/**` + build.gradle +
+# settings.gradle, plus the W5 D2 compose-stack files.
+name: multistate-api compose-ci
+
+on:
+  pull_request:
+    paths:
+      - 'compose.yaml'
+      - 'compose.override.yaml'
+      - 'compose.profiles.yaml'
+      - 'envs/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - 'src/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'Dockerfile'
+      - '.github/workflows/compose-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compose-up-smoke:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    env:
+      COMPOSE_PROJECT_NAME: multistate_dev_ci_${{ github.run_id }}
+      # compose.yaml uses ${APP_VERSION:?...} fail-fast on the app image
+      # tag. Set it once at job scope so every compose invocation inherits it.
+      APP_VERSION: "0.1.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      # CI does NOT have the engineer's envs/secrets on disk - write them
+      # here from values acceptable for ephemeral CI use only.
+      - name: Seed envs + secrets for CI
+        run: |
+          mkdir -p envs secrets
+          cp envs/multistate.env.example envs/multistate.env
+          # CI_PG_PASSWORD may be empty if the repo secret isn't set; fall
+          # back to a hard-coded dev-only string so Postgres still boots.
+          printf '%s' "${CI_PG_PASSWORD:-ci-dev-only-password}" > secrets/pg_password.txt
+        env:
+          CI_PG_PASSWORD: ${{ secrets.CI_PG_PASSWORD }}
+
+      - name: Validate compose.yaml schema
+        run: docker compose -f compose.yaml config --quiet
+
+      # The W5 D1 docker workflow doesn't push anywhere yet (the ECR push
+      # path is documented as out-of-scope for now), so the image
+      # uptimecrew/multistate-api:${APP_VERSION} doesn't exist in any
+      # registry. Build it locally on the runner so `compose up` finds
+      # it. Switch to a `docker pull` once an image-publish path lands.
+      - name: Build multistate-api image for compose
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build multistate-api:0.1.0
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: uptimecrew/multistate-api:0.1.0
+          build-args: |
+            APP_VERSION=0.1.0
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      # Export the built image as a workflow artifact. Lets engineers
+      # whose laptops sit behind a corporate TLS-intercepting proxy (which
+      # blocks `docker build` from reaching services.gradle.org) skip the
+      # local build entirely: download the tarball, `docker load` it,
+      # then `make smoke` works. 1-day retention keeps storage bounded.
+      - name: Export image as artifact
+        run: docker save uptimecrew/multistate-api:0.1.0 | gzip > multistate-api-0.1.0.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: multistate-api-image
+          path: multistate-api-0.1.0.tar.gz
+          retention-days: 1
+
+      # smoke.sh manages its own compose project lifecycle (up → checks → down).
+      # Running it directly avoids a port-8080 conflict that would arise from
+      # a separate "compose up" step. The script exits non-zero on any failure.
+      - name: Smoke (up + health checks + down)
+        run: HOST_PORT=8080 COMPOSE_FILE=compose.yaml ./scripts/smoke.sh
+
+      - name: Capture logs on failure
+        if: failure()
+        run: docker compose -f compose.yaml logs --no-color --tail=500 > compose-logs.txt || true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: compose-logs
+          path: compose-logs.txt
+          retention-days: 14

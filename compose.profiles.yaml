@@ -1,0 +1,58 @@
+# compose.profiles.yaml - sidecars activated via `--profile <name>`.
+# Merge with:
+#   docker compose -f compose.yaml -f compose.profiles.yaml --profile e2e up -d --wait
+# Each service must declare a `profiles:` list; un-profiled services
+# always start.
+
+services:
+  # ----- e2e profile: W4 React frontend ------------------------------
+  multistate-web:
+    profiles: [e2e]
+    image: uptimecrew/multistate-web:0.1.0
+    networks: [multistate_net]
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: http://localhost:8080
+    depends_on:
+      multistate-api: { condition: service_healthy }
+    restart: unless-stopped
+
+  # ----- test profile: seed deterministic fixtures -------------------
+  seed-fixtures:
+    profiles: [test]
+    image: uptimecrew/multistate-api:${APP_VERSION:?APP_VERSION required}
+    networks: [multistate_net]
+    command: ["java", "-jar", "/app.jar", "--spring.profiles.active=seed"]
+    env_file:
+      - ./envs/multistate.env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/multistate_dev
+      SPRING_DATASOURCE_USERNAME: multistate_dev
+      # See compose.yaml note: configtree maps file -> spring.datasource.password
+      SPRING_CONFIG_IMPORT: "configtree:/run/secrets/"
+    secrets:
+      - source: pg_password
+        target: spring.datasource.password
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  # ----- observability profile: forward to W5 D5 ---------------------
+  otelcol:
+    profiles: [observability, e2e]
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    networks: [multistate_net]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - type: bind
+        source: ./otelcol/config.yaml
+        target: /etc/otelcol-contrib/config.yaml
+        read_only: true
+
+  jaeger:
+    profiles: [observability, e2e]
+    image: jaegertracing/all-in-one:1.62
+    networks: [multistate_net]
+    ports:
+      - "16686:16686"
