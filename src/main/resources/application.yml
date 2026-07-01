@@ -46,7 +46,7 @@ spring:
       # Stop+remove:   docker stop uc-mongo && docker rm uc-mongo
       # Restart:       docker start uc-mongo
       # ───────────────────────────────────────────────────────────────────
-      uri: ${MONGO_URI:mongodb://localhost:27017/multistate}   # tests inject via @ServiceConnection; compose overrides via MONGO_URI
+      uri: mongodb://localhost:27017/multistate      # local default; SPRING_DATA_MONGODB_URI overrides in compose; tests use @ServiceConnection
       auto-index-creation: true                      # (2) create @Indexed indexes on startup
     redis:
       # ───────────────────────────────────────────────────────────────────
