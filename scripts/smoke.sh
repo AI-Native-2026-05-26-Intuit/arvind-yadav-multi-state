@@ -29,8 +29,12 @@ echo "Bringing up stack as project ${PROJECT}..."
 ${COMPOSE} up -d --wait --wait-timeout 240
 
 echo "Confirming all services are healthy..."
+# Docker Compose v2 outputs NDJSON (one object per line); older versions output
+# a JSON array. jq -n + [inputs] handles both safely.
 unhealthy=$(${COMPOSE} ps --format json \
-  | jq -r '.[] | select(.Health != "healthy" and .Health != "") | .Name')
+    | jq -rn '[inputs | if type == "array" then .[] else . end]
+              | .[] | select(.Health != null and .Health != "" and .Health != "healthy") | .Name' \
+    2>/dev/null || true)
 if [ -n "${unhealthy}" ]; then
     echo "ERROR: services not healthy: ${unhealthy}"
     exit 1
