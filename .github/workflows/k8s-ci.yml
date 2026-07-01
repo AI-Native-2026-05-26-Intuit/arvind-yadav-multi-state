@@ -110,7 +110,7 @@ jobs:
         run: |
           kubectl wait --for=condition=available deployment/postgres -n multistate-dev --timeout=180s
           kubectl wait --for=condition=available deployment/redis -n multistate-dev --timeout=120s
-          kubectl wait --for=condition=available deployment/mongo -n multistate-dev --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=mongo -n multistate-dev --timeout=180s
           kubectl wait --for=condition=available deployment/kafka -n multistate-dev --timeout=180s
 
       - name: Install ingress-nginx
