@@ -10,6 +10,7 @@ on:
       - 'settings.gradle'
       - 'Makefile'
       - 'events/**'
+      - 'env.ci.json'
       - 'scripts/sam-*.sh'
       - '.github/workflows/serverless.yml'
   push:
@@ -78,25 +79,24 @@ jobs:
             --endpoint-url http://localhost:8000 \
             --region us-east-1 \
             --item '{"id":{"S":"tnt_synth_001"},"legalName":{"S":"tenant-synth.example.internal"},"primaryState":{"S":"CA"},"status":{"S":"ACTIVE"},"capturedAt":{"S":"2026-07-03T00:00:00Z"},"totalAllocated":{"N":"12500.00"}}'
-          cat > /tmp/sam-local-env.json <<'EOF'
-          {
-            "TenantLookupFunction": {
-              "TENANTS_TABLE": "tenants-dev",
-              "AWS_REGION": "us-east-1",
-              "DYNAMODB_ENDPOINT_URL": "http://dynamodb-local:8000",
-              "AWS_ACCESS_KEY_ID": "local",
-              "AWS_SECRET_ACCESS_KEY": "local",
-              "METRICS_NAMESPACE": "MultistateDev"
-            }
-          }
-          EOF
+          aws dynamodb wait table-exists \
+            --table-name tenants-dev \
+            --endpoint-url http://localhost:8000 \
+            --region us-east-1
+          aws dynamodb get-item \
+            --table-name tenants-dev \
+            --endpoint-url http://localhost:8000 \
+            --region us-east-1 \
+            --key '{"id":{"S":"tnt_synth_001"}}' \
+            --query 'Item.id.S' --output text
 
       - name: sam local invoke (integration test against handler)
         run: |
           sam local invoke TenantLookupFunction \
               --event events/get-tenant.json \
-              --env-vars /tmp/sam-local-env.json \
+              --env-vars env.ci.json \
               --docker-network sam-ci \
+              --parameter-overrides StageName=dev DynamoDbEndpointUrl=http://dynamodb-local:8000 \
               | tee /tmp/local-invoke.json
           grep -q '"statusCode": 200' /tmp/local-invoke.json
           grep -q 'tnt_synth_001' /tmp/local-invoke.json

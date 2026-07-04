@@ -74,13 +74,13 @@ Resources:
       AutoPublishAlias: live
       Environment:
         Variables:
-          TENANTS_TABLE: !Ref TenantsTable
+          TENANTS_TABLE: !Sub "tenants-${StageName}"
           METRICS_NAMESPACE: MultistateDev
           DYNAMODB_ENDPOINT_URL: !Ref DynamoDbEndpointUrl
       # Least-privilege: SAM connector scopes read verbs to this table only — not dynamodb:*.
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !Ref TenantsTable
+            TableName: !Sub "tenants-${StageName}"
       Events:
         GetTenant:
           Type: HttpApi
