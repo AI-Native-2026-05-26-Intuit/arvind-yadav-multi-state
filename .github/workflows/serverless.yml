@@ -44,8 +44,8 @@ jobs:
         run: ./gradlew tenantLookupJar test --tests 'com.uptimecrew.multi_state.lambda.*'
 
       - name: sam build
-        # Gradle + Makefile unpack the fat JAR (no compile in-container).
-        run: sam build
+        # Gradle + Makefile unpack the fat JAR. CI uses a longer timeout for JVM cold start.
+        run: sam build --parameter-overrides LambdaTimeout=30
 
       - name: Start DynamoDB Local for sam local invoke
         env:
@@ -97,7 +97,6 @@ jobs:
               --event events/get-tenant.json \
               --env-vars /tmp/sam-local-env.json \
               --docker-network sam-ci \
-              --timeout 30 \
               | tee /tmp/local-invoke.json
           grep -q '"statusCode": 200' /tmp/local-invoke.json
           grep -q 'tnt_synth_001' /tmp/local-invoke.json

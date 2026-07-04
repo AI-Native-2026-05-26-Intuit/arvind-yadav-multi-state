@@ -20,12 +20,17 @@ Parameters:
   DynamoDbEndpointUrl:
     Type: String
     Default: ""
+  LambdaTimeout:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 900
 
 Globals:
   Function:
     Runtime: java21
     MemorySize: 1024
-    Timeout: 10
+    Timeout: !Ref LambdaTimeout
     Architectures: [arm64]
     Tracing: Active
     LoggingConfig:
