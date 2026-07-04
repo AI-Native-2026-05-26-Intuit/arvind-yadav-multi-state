@@ -22,7 +22,7 @@ permissions:
 jobs:
   validate-build-test:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +43,13 @@ jobs:
         run: ./gradlew tenantLookupJar test --tests 'com.uptimecrew.multi_state.lambda.*'
 
       - name: sam build
-        run: sam build --use-container
+        # Gradle + Makefile unpack the fat JAR (no compile in-container). Skipping
+        # --use-container avoids pulling build-java21:latest-arm64 on x86_64 runners
+        # (cross-arch QEMU builds routinely exceed the job timeout).
+        run: sam build
+
+      - name: Set up QEMU (arm64 Lambda runtime on x86_64 runner)
+        uses: docker/setup-qemu-action@v3
 
       - name: Start DynamoDB Local for sam local invoke
         run: |
@@ -91,7 +97,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sam-build
-          path: .aws-sam/build
+          path: .aws-sam
           retention-days: 7
 
   deploy-sandbox:
@@ -106,7 +112,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: sam-build
-          path: .aws-sam/build
+          path: .aws-sam
 
       - uses: aws-actions/setup-sam@v2
         with:
