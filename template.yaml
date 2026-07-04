@@ -50,6 +50,8 @@ Resources:
         - { AttributeName: id, KeyType: HASH }
       PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
 
+  # SnapStart + live alias: HttpApi integrates against the alias (not $LATEST).
+  # Without AutoPublishAlias, SnapStart never applies to the integration target.
   TenantLookupFunction:
     Type: AWS::Serverless::Function
     Metadata:
