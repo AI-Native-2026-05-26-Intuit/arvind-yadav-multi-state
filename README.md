@@ -112,6 +112,14 @@ The domain core is now packaged as a **Spring Boot 4** application: the service 
 - **k8s-smoke.** [scripts/k8s-smoke.sh](scripts/k8s-smoke.sh) waits for rollout, asserts the `multistate-api` EndpointSlice has at least one ready address (catches selector/label drift before the HTTP call times out), then runs three Ingress checks: `/actuator/health/readiness` → `UP`, `/api/v1/tenants/tnt_synth_001` → `200` or `404`, `/actuator/health/liveness` → `UP`. Reach the Ingress on the host with `curl -H 'Host: multistate.dev.uptimecrew.internal' http://localhost:8080/...`.
 - **k8s-ci.** [.github/workflows/k8s-ci.yml](.github/workflows/k8s-ci.yml) runs `kubeconform -strict` on `manifests/`, builds the image, spins up a disposable k3d cluster (`AbsaOSS/k3d-action@v2`), seeds `multistate-api-secrets` from `CI_PG_PASSWORD`, applies with `--dry-run=server` then live, blocks on `kubectl rollout status --timeout=8m`, runs `./scripts/k8s-smoke.sh`, and uploads `pod-logs.txt` as a 14-day `k8s-diagnostics` artefact on failure. Local secret overrides go in a gitignored `manifests/*.local.yaml` (see `manifests/40-multistate-api.secret.yaml` header).
 
+**Week 5 Day 4:** added a serverless tenant-lookup read path alongside the Spring Boot monolith — a Gradle-built Java 21 Lambda (`com.uptimecrew.multi_state`) fronted by API Gateway HTTP API v2, backed by a DynamoDB read model, with SnapStart, structured JSON logging, EMF custom metrics, and a GitHub Actions serverless pipeline (OIDC deploy, no long-lived AWS keys).
+
+- **Task 1 — handler + SAM stack.** [TenantLookupHandler](src/main/java/com/uptimecrew/multi_state/lambda/TenantLookupHandler.java) implements `RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse>`: INIT-phase `private static final` fields for `DynamoDbClient`, `ObjectMapper`, `TENANTS_TABLE`, and SLF4J; `handleRequest` parses `tenantId`, returns 400/404/200, and echoes `x-correlation-id` on every response path. [TenantRecord](src/main/java/com/uptimecrew/multi_state/lambda/TenantRecord.java) maps DynamoDB items (`BigDecimal` scale 2, `Instant` timestamps, `String` ids). [template.yaml](template.yaml) declares `MultistateHttpApi`, `TenantsTable` (PAY_PER_REQUEST, PK `id`), `TenantLookupFunction`, an explicit `TenantLookupFunctionLogGroup`, and a p99 Duration alarm. [events/get-tenant.json](events/get-tenant.json) is the synthetic `APIGatewayV2HTTPEvent` for `sam local invoke`. Gradle builds the fat JAR via `./gradlew tenantLookupJar` → `target/multistate-tenant-lookup-1.0.0.jar`; `bootJar` excludes `com/uptimecrew/multi_state/**` so the Lambda code never ships inside the Spring container image. Unit tests in [TenantLookupHandlerTest](src/test/java/com/uptimecrew/multi_state/lambda/TenantLookupHandlerTest.java) (JUnit 5 + Mockito + AssertJ).
+- **Task 2 — SnapStart + cold/warm measurement.** `template.yaml` sets `SnapStart: { ApplyOn: PublishedVersions }` and `AutoPublishAlias: live` so the HttpApi integration targets the SnapStart-restored alias (not `$LATEST`). [scripts/sam-deploy.sh](scripts/sam-deploy.sh) runs `sam validate --lint` → `tenantLookupJar` → `sam build --use-container` → `sam deploy` (guided on first run, reuses `samconfig.toml` thereafter). [scripts/sam-cold-warm.sh](scripts/sam-cold-warm.sh) loops five curls with `x-correlation-id: cold-N` and tails CloudWatch `REPORT` lines. [scripts/sam-verify.sh](scripts/sam-verify.sh) checks SnapStart, the `live` alias, and the p99 alarm.
+- **Task 3 — least-privilege + observability.** The function's `Policies` block uses SAM's `DynamoDBReadPolicy: { TableName: !Ref TenantsTable }` connector (specific read verbs on the table ARN — not `dynamodb:*`). `Globals.Function.LoggingConfig` sets `LogFormat: JSON`. Correlation-id propagation: caller `x-correlation-id` header wins, else `Context.getAwsRequestId()`; echoed in response headers and every log line. [EmfPublisher](src/main/java/com/uptimecrew/multi_state/lambda/EmfPublisher.java) emits `TenantLookupSuccess` / `TenantNotFound` into the `MultistateDev` namespace via hand-written EMF JSON through SLF4J (no `cloudwatch:PutMetricData`). [scripts/sam-verify-task3.sh](scripts/sam-verify-task3.sh) dumps the IAM inline policy, recent log lines, correlation curl, and `list-metrics --namespace MultistateDev`.
+- **Task 4 — CI + smoke + teardown.** [scripts/sam-smoke.sh](scripts/sam-smoke.sh) reads `HttpApiUrl` from CloudFormation, hits a known-good tenant path, asserts `/tenants/` returns 404 from API Gateway routing, and confirms a recent `REPORT` line in CloudWatch Logs. [.github/workflows/serverless.yml](.github/workflows/serverless.yml) on PR: `sam validate --lint` → `./gradlew tenantLookupJar test` (lambda package) → `sam build --use-container` → `sam local invoke` against DynamoDB Local. On merge to `main`: OIDC federated auth via `aws-actions/configure-aws-credentials@v4` + `vars.AWS_DEPLOY_ROLE_ARN` / `vars.AWS_REGION` (no `AWS_ACCESS_KEY_ID` secrets), deploy to `multistate-lambda-sandbox`, run `./scripts/sam-smoke.sh`, upload `sam-diagnostics` (stack events + lambda logs) on failure. Teardown: `sam delete --stack-name multistate-lambda-dev` and `sam delete --stack-name multistate-lambda-sandbox` remove the DynamoDB table, HttpApi, Function, LogGroup, alarm, and IAM role in one shot.
+- **Deviation — Gradle not Maven.** The course appendix references `mvn test` and `pom.xml`; this repo stays Gradle-only. Substitute `./gradlew tenantLookupJar test --tests 'com.uptimecrew.multi_state.lambda.*'` and wire `build.gradle` / `Makefile` in the serverless workflow path filters. Rancher Desktop users: `export DOCKER_HOST=unix://$HOME/.rd/docker.sock` before `sam build --use-container` or `sam local invoke`.
+
 ## Build & test
 
 ```bash
@@ -120,6 +128,17 @@ The domain core is now packaged as a **Spring Boot 4** application: the service 
 ./gradlew check       # tests + JaCoCo branch-coverage gate (≥ 0.70)
 ./gradlew bootRun     # boot the app (defaults to the `local` profile)
 ./gradlew clean       # wipe build outputs
+```
+
+**Lambda (W5 D4):**
+
+```bash
+./gradlew tenantLookupJar   # fat JAR → target/multistate-tenant-lookup-1.0.0.jar
+sam validate --lint
+sam build --use-container
+sam local invoke TenantLookupFunction --event events/get-tenant.json --env-vars env.json.example
+./scripts/sam-deploy.sh     # validate + build + deploy (after AWS creds configured)
+./scripts/sam-smoke.sh      # post-deploy curl + CloudWatch REPORT check
 ```
 
 Requires JDK 17+.
@@ -285,6 +304,9 @@ src/main/java/com/uptimecrew/multistate/
     repository/       # Spring Data JPA + Mongo repositories
     service/          # allocation strategies + AllocationService (Spring beans)
     exception/        # AllocationException hierarchy
+src/main/java/com/uptimecrew/multi_state/
+    lambda/           # W5 D4 serverless tenant lookup (separate from Spring Boot app)
+                      # TenantLookupHandler, TenantRecord, EmfPublisher
 src/main/resources/
     application.yml   # local + test profiles, datasource, Actuator, logging,
                       # springdoc paths, identity.base-url, resilience4j breaker,
@@ -306,10 +328,15 @@ src/test/java/com/uptimecrew/multistate/
     model/
     service/
     repository/       # Testcontainers Postgres integration tests
+    multi_state/lambda/  # W5 D4 Lambda handler unit tests
 mcp.json              # Claude Code MCP client registration (SSE mode)
+template.yaml         # W5 D4 SAM stack (HttpApi + DynamoDB + Lambda + alarm)
+events/               # Synthetic API Gateway events for sam local invoke
+scripts/sam-*.sh      # deploy, smoke, verify, cold-warm probes
+.github/workflows/serverless.yml  # PR validate/build/test + main OIDC deploy
 ```
 
-Package root: `com.uptimecrew.multistate`. New code goes under this root.
+Package root: `com.uptimecrew.multistate` for the Spring Boot app. W5 D4 Lambda code lives under `com.uptimecrew.multi_state` (intentionally separate package).
 
 The `db/` directory holds the Postgres schema (`V1__schema.sql`), seed (`V2__seed.sql`), the W3 D3 outbox migration (`V3__event_outbox.sql`), verification queries (`verify.sql`), and ER diagram + design notes (`db/README.md`).
 
