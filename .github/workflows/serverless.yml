@@ -21,7 +21,8 @@ permissions:
 
 jobs:
   validate-build-test:
-    runs-on: ubuntu-22.04
+    # Native arm64 matches template Architectures: [arm64] — avoids QEMU timeouts on sam local invoke.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -43,13 +44,8 @@ jobs:
         run: ./gradlew tenantLookupJar test --tests 'com.uptimecrew.multi_state.lambda.*'
 
       - name: sam build
-        # Gradle + Makefile unpack the fat JAR (no compile in-container). Skipping
-        # --use-container avoids pulling build-java21:latest-arm64 on x86_64 runners
-        # (cross-arch QEMU builds routinely exceed the job timeout).
+        # Gradle + Makefile unpack the fat JAR (no compile in-container).
         run: sam build
-
-      - name: Set up QEMU (arm64 Lambda runtime on x86_64 runner)
-        uses: docker/setup-qemu-action@v3
 
       - name: Start DynamoDB Local for sam local invoke
         env:
@@ -62,7 +58,14 @@ jobs:
           docker rm -f dynamodb-local 2>/dev/null || true
           docker run -d --name dynamodb-local --network sam-ci \
             -p 8000:8000 amazon/dynamodb-local
-          sleep 2
+          for i in $(seq 1 30); do
+            if aws dynamodb list-tables \
+                --endpoint-url http://localhost:8000 \
+                --region us-east-1 >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
           aws dynamodb create-table \
             --table-name tenants-dev \
             --attribute-definitions AttributeName=id,AttributeType=S \
@@ -94,8 +97,9 @@ jobs:
               --event events/get-tenant.json \
               --env-vars /tmp/sam-local-env.json \
               --docker-network sam-ci \
+              --timeout 30 \
               | tee /tmp/local-invoke.json
-          grep -q '"statusCode"' /tmp/local-invoke.json
+          grep -q '"statusCode": 200' /tmp/local-invoke.json
           grep -q 'tnt_synth_001' /tmp/local-invoke.json
 
       - name: Upload sam build artifact
