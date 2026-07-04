@@ -35,3 +35,8 @@ clean: ## Stop containers; remove anonymous volumes; keep named volumes + images
 
 nuke: ## DANGEROUS: stop containers AND wipe named volumes + locally-built images.
 	docker compose down --volumes --remove-orphans --rmi local
+
+# SAM build hook (W5 D4) — unpack Gradle fat JAR for `sam local invoke`.
+# Run `./gradlew tenantLookupJar` before `sam build`.
+build-TenantLookupFunction:
+	unzip -qo target/multistate-tenant-lookup-1.0.0.jar -d $(ARTIFACTS_DIR)

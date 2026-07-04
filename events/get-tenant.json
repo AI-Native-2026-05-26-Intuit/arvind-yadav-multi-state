@@ -1,0 +1,22 @@
+{
+  "version": "2.0",
+  "routeKey": "GET /tenants/{tenantId}",
+  "rawPath": "/tenants/tnt_synth_001",
+  "headers": {
+    "accept": "application/json",
+    "x-correlation-id": "local-smoke-corr-1"
+  },
+  "requestContext": {
+    "http": {
+      "method": "GET",
+      "path": "/tenants/tnt_synth_001",
+      "sourceIp": "127.0.0.1"
+    },
+    "requestId": "local-smoke-req-1",
+    "stage": "$default",
+    "domainName": "local.invoke",
+    "accountId": "123456789012"
+  },
+  "pathParameters": { "tenantId": "tnt_synth_001" },
+  "isBase64Encoded": false
+}

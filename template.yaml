@@ -1,0 +1,104 @@
+# template.yaml - the SAM stack for the multistate-tenant-lookup Lambda.
+# One HTTP API + one DynamoDB table + one Function + one explicit
+# LogGroup. The transform expands AWS::Serverless::* into the full
+# CloudFormation graph (Function + role + permission + integration).
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: multistate-tenant-lookup Lambda + HTTP API + DynamoDB read model
+              (Week 5 Day 4 capstone deliverable).
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, stage, prod]
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+
+Globals:
+  Function:
+    Runtime: java21
+    MemorySize: 1024
+    Timeout: 10
+    Architectures: [arm64]
+    Tracing: Active
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+    Environment:
+      Variables:
+        ENV: !Ref StageName
+
+Resources:
+
+  MultistateHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref StageName
+
+  TenantsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "tenants-${StageName}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+
+  TenantLookupFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      FunctionName: !Sub "multistate-tenant-lookup-${StageName}"
+      Handler: com.uptimecrew.multi_state.lambda.TenantLookupHandler::handleRequest
+      CodeUri: .
+      SnapStart:
+        ApplyOn: PublishedVersions
+      AutoPublishAlias: live
+      Environment:
+        Variables:
+          TENANTS_TABLE: !Ref TenantsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TenantsTable
+      Events:
+        GetTenant:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref MultistateHttpApi
+            Method: GET
+            Path: /tenants/{tenantId}
+
+  TenantLookupFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/multistate-tenant-lookup-${StageName}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  TenantLookupFunctionP99Alarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "multistate-tenant-lookup-p99-${StageName}"
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Dimensions: [{ Name: FunctionName, Value: !Ref TenantLookupFunction }]
+      ExtendedStatistic: p99
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 1500
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  HttpApiUrl:
+    Description: Base URL of the HTTP API stage.
+    Value: !Sub "https://${MultistateHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+  FunctionName:
+    Description: The deployed function's physical name.
+    Value: !Ref TenantLookupFunction
