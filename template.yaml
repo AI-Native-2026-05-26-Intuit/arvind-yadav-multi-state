@@ -66,6 +66,8 @@ Resources:
       Environment:
         Variables:
           TENANTS_TABLE: !Ref TenantsTable
+          METRICS_NAMESPACE: MultistateDev
+      # Least-privilege: SAM connector scopes read verbs to this table only — not dynamodb:*.
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref TenantsTable
@@ -80,6 +82,7 @@ Resources:
   TenantLookupFunctionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
+      # Explicit retention — auto-created groups default to Never Expire (cost foot-gun).
       LogGroupName: !Sub "/aws/lambda/multistate-tenant-lookup-${StageName}"
       RetentionInDays: !Ref LogRetentionDays
 

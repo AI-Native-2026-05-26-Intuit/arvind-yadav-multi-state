@@ -39,16 +39,29 @@ public final class TenantLookupHandler
         ctx.getRemainingTimeInMillis());
 
     if (tenantId == null || tenantId.isBlank()) {
+      LOG.warn(
+          "error response status=400 msg=missing tenantId correlationId={}", correlationId);
       return errorResponse(400, "missing tenantId path parameter", correlationId);
     }
 
     TenantRecord record = loadFromDynamo(tenantId);
     if (record == null) {
+      EmfPublisher.emitCount("TenantNotFound");
+      LOG.warn(
+          "error response status=404 msg=tenant not found correlationId={} tenantId={}",
+          correlationId,
+          tenantId);
       return errorResponse(404, "tenant not found", correlationId);
     }
 
     try {
       String body = JSON.writeValueAsString(record);
+      EmfPublisher.emitCount("TenantLookupSuccess");
+      LOG.info(
+          "lookup success correlationId={} tenantId={} remainingMs={}",
+          correlationId,
+          tenantId,
+          ctx.getRemainingTimeInMillis());
       return APIGatewayV2HTTPResponse.builder()
           .withStatusCode(200)
           .withHeaders(
@@ -56,7 +69,7 @@ public final class TenantLookupHandler
           .withBody(body)
           .build();
     } catch (Exception e) {
-      LOG.error("serialisation failure correlationId={}", correlationId, e);
+      LOG.error("serialisation failure correlationId={} tenantId={}", correlationId, tenantId, e);
       return errorResponse(500, "serialisation failure", correlationId);
     }
   }
@@ -91,7 +104,6 @@ public final class TenantLookupHandler
   }
 
   private APIGatewayV2HTTPResponse errorResponse(int status, String msg, String correlationId) {
-    LOG.warn("error response status={} msg={} correlationId={}", status, msg, correlationId);
     return APIGatewayV2HTTPResponse.builder()
         .withStatusCode(status)
         .withHeaders(
