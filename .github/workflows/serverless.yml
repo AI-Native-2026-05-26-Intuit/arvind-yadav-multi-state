@@ -91,6 +91,9 @@ jobs:
             --query 'Item.id.S' --output text
 
       - name: sam local invoke (integration test against handler)
+        env:
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_EC2_METADATA_DISABLED: "true"
         run: |
           sam local invoke TenantLookupFunction \
               --event events/get-tenant.json \

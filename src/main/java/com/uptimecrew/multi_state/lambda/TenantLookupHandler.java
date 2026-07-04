@@ -7,6 +7,9 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayV2HTTPResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
@@ -92,9 +95,18 @@ public final class TenantLookupHandler
     DynamoDbClient client = ddb;
     if (client == null) {
       String endpoint = System.getenv("DYNAMODB_ENDPOINT_URL");
-      var builder = DynamoDbClient.builder();
+      String region =
+          Optional.ofNullable(System.getenv("AWS_REGION"))
+              .filter(r -> !r.isBlank())
+              .or(() ->
+                  Optional.ofNullable(System.getenv("AWS_DEFAULT_REGION")).filter(r -> !r.isBlank()))
+              .orElse("us-east-1");
+      var builder = DynamoDbClient.builder().region(Region.of(region));
       if (endpoint != null && !endpoint.isBlank()) {
-        builder.endpointOverride(URI.create(endpoint));
+        builder
+            .endpointOverride(URI.create(endpoint))
+            .credentialsProvider(
+                StaticCredentialsProvider.create(AwsBasicCredentials.create("local", "local")));
       }
       client = builder.build();
       ddb = client;
