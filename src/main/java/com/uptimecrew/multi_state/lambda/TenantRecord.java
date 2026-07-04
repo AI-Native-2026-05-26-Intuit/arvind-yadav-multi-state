@@ -38,7 +38,19 @@ public record TenantRecord(
         requiredString(item, "primaryState"),
         requiredString(item, "status"),
         Instant.parse(requiredString(item, "capturedAt")),
-        new BigDecimal(requiredString(item, "totalAllocated")).setScale(2, RoundingMode.HALF_UP));
+        requiredMoney(item, "totalAllocated"));
+  }
+
+  private static BigDecimal requiredMoney(Map<String, AttributeValue> item, String key) {
+    AttributeValue value = item.get(key);
+    if (value == null) {
+      throw new IllegalArgumentException("missing DynamoDB attribute: " + key);
+    }
+    String raw = value.n() != null && !value.n().isBlank() ? value.n() : value.s();
+    if (raw == null || raw.isBlank()) {
+      throw new IllegalArgumentException("missing or blank DynamoDB attribute: " + key);
+    }
+    return new BigDecimal(raw).setScale(2, RoundingMode.HALF_UP);
   }
 
   private static String requiredString(Map<String, AttributeValue> item, String key) {

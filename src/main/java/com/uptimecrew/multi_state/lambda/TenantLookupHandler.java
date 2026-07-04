@@ -11,16 +11,18 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
 
+import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
 
 public final class TenantLookupHandler
     implements RequestHandler<APIGatewayV2HTTPEvent, APIGatewayV2HTTPResponse> {
 
-  private static final DynamoDbClient DDB = DynamoDbClient.builder().build();
   private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
-  private static final String TABLE = System.getenv("TENANTS_TABLE");
   private static final Logger LOG = LoggerFactory.getLogger(TenantLookupHandler.class);
+
+  // Deferred until first request so SAM local --env-vars overrides are visible at client build.
+  private static volatile DynamoDbClient ddb;
 
   @Override
   public APIGatewayV2HTTPResponse handleRequest(APIGatewayV2HTTPEvent event, Context ctx) {
@@ -86,17 +88,32 @@ public final class TenantLookupHandler
         .orElse(null);
   }
 
+  private static DynamoDbClient ddb() {
+    DynamoDbClient client = ddb;
+    if (client == null) {
+      String endpoint = System.getenv("DYNAMODB_ENDPOINT_URL");
+      var builder = DynamoDbClient.builder();
+      if (endpoint != null && !endpoint.isBlank()) {
+        builder.endpointOverride(URI.create(endpoint));
+      }
+      client = builder.build();
+      ddb = client;
+    }
+    return client;
+  }
+
   private TenantRecord loadFromDynamo(String id) {
-    if (TABLE == null) {
+    String table = System.getenv("TENANTS_TABLE");
+    if (table == null) {
       throw new IllegalStateException("TENANTS_TABLE env var is not set");
     }
     GetItemRequest req =
         GetItemRequest.builder()
-            .tableName(TABLE)
+            .tableName(table)
             .key(Map.of("id", AttributeValue.builder().s(id).build()))
             .consistentRead(false)
             .build();
-    var resp = DDB.getItem(req);
+    var resp = ddb().getItem(req);
     if (!resp.hasItem() || resp.item().isEmpty()) {
       return null;
     }

@@ -16,6 +16,10 @@ Parameters:
   LogRetentionDays:
     Type: Number
     Default: 14
+  # Optional override for DynamoDB Local during sam local invoke (empty in deployed stacks).
+  DynamoDbEndpointUrl:
+    Type: String
+    Default: ""
 
 Globals:
   Function:
@@ -67,6 +71,7 @@ Resources:
         Variables:
           TENANTS_TABLE: !Ref TenantsTable
           METRICS_NAMESPACE: MultistateDev
+          DYNAMODB_ENDPOINT_URL: !Ref DynamoDbEndpointUrl
       # Least-privilege: SAM connector scopes read verbs to this table only — not dynamodb:*.
       Policies:
         - DynamoDBReadPolicy:
