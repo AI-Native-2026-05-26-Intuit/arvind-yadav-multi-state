@@ -28,10 +28,13 @@ jobs:
 
       - name: Sloth generate (drift gate)
         run: |
-          docker run --rm -v "${PWD}:/work" -w /work "${SLOTH_IMAGE}" \
+          mkdir -p sloth-out
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${PWD}:/work" -w /work "${SLOTH_IMAGE}" \
             generate -i slo/multistate-api.sloth.yaml \
-            -o manifests/observability/multistate-api-prometheusrule.yaml
-          git diff --exit-code -- manifests/observability/multistate-api-prometheusrule.yaml
+            -o sloth-out/multistate-api-prometheusrule.yaml
+          diff -u manifests/observability/multistate-api-prometheusrule.yaml \
+            sloth-out/multistate-api-prometheusrule.yaml
 
       - name: promtool check rules
         run: |
@@ -126,10 +129,13 @@ jobs:
       - name: Upload diagnostics on failure
         if: failure()
         run: |
-          docker run --rm -v "${PWD}:/work" -w /work "${SLOTH_IMAGE}" \
+          mkdir -p sloth-out
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${PWD}:/work" -w /work "${SLOTH_IMAGE}" \
             generate -i slo/multistate-api.sloth.yaml \
-            -o /work/sloth-regen.yaml || true
-          git diff -- manifests/observability/multistate-api-prometheusrule.yaml sloth-regen.yaml \
+            -o sloth-out/multistate-api-prometheusrule.yaml || true
+          diff -u manifests/observability/multistate-api-prometheusrule.yaml \
+            sloth-out/multistate-api-prometheusrule.yaml \
             > sloth-drift.diff || true
 
       - uses: actions/upload-artifact@v4

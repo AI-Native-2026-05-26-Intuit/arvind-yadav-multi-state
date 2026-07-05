@@ -17,9 +17,13 @@ SLOTH_IMAGE="${SLOTH_IMAGE:-ghcr.io/slok/sloth:v0.11.0}"
 PROM_IMAGE="${PROM_IMAGE:-prom/prometheus:v2.54.0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+SLOTH_REGEN="sloth-out/$(basename "${RULES_FILE}")"
+
 sloth_generate() {
-  docker run --rm -v "${PWD}:/work" -w /work "${SLOTH_IMAGE}" \
-    generate -i "${SLOTH_SPEC}" -o "${RULES_FILE}"
+  mkdir -p sloth-out
+  docker run --rm --user "$(id -u):$(id -g)" \
+    -v "${PWD}:/work" -w /work "${SLOTH_IMAGE}" \
+    generate -i "${SLOTH_SPEC}" -o "${SLOTH_REGEN}"
 }
 
 promtool_check() {
@@ -139,9 +143,9 @@ ensure_app_prereqs
 
 echo "==> Regenerating PrometheusRule from Sloth spec"
 sloth_generate
-if ! git diff --quiet -- "${RULES_FILE}"; then
+if ! diff -q "${RULES_FILE}" "${SLOTH_REGEN}" >/dev/null 2>&1; then
   echo "ERROR: PrometheusRule drifted from Sloth spec. Re-commit the regenerated file." >&2
-  git --no-pager diff -- "${RULES_FILE}" >&2
+  diff -u "${RULES_FILE}" "${SLOTH_REGEN}" >&2
   exit 1
 fi
 
