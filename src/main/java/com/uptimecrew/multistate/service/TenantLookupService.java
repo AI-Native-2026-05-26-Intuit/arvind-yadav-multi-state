@@ -8,6 +8,8 @@ import io.micrometer.core.instrument.Timer;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -16,6 +18,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public final class TenantLookupService {
+
+  private static final Logger LOG = LoggerFactory.getLogger(TenantLookupService.class);
 
   static final String EVALUATIONS_COUNTER = "multistate_nexus_evaluations_total";
   static final String EVALUATIONS_TIMER = "multistate_nexus_evaluations";
@@ -68,6 +72,7 @@ public final class TenantLookupService {
   }
 
   public Optional<TenantReadModel> lookupById(String id) {
+    LOG.info("lookup attempted: tenantId={}", id);
     return byIdTimer.record(
         () -> {
           try {
@@ -76,6 +81,7 @@ public final class TenantLookupService {
               byIdSuccess.increment();
             } else {
               byIdNotFound.increment();
+              LOG.info("lookup result: not_found tenantId={}", id);
             }
             return found;
           } catch (RuntimeException ex) {
@@ -86,12 +92,14 @@ public final class TenantLookupService {
   }
 
   public List<TenantReadModel> nexusForState(String state) {
+    LOG.info("lookup attempted: state={}", state);
     return byStateTimer.record(
         () -> {
           try {
             List<TenantReadModel> rows = readModelRepository.findByPrimaryState(state);
             if (rows.isEmpty()) {
               byStateNotFound.increment();
+              LOG.info("lookup result: not_found state={}", state);
             } else {
               byStateSuccess.increment();
             }

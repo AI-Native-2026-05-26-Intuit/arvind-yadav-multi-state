@@ -23,3 +23,8 @@ spec:
     - port: http
       path: /actuator/prometheus
       interval: 15s
+      scrapeTimeout: 10s
+      metricRelabelings:
+        - sourceLabels: [__name__, exception]
+          regex: "http_server_requests_seconds.*;.+"
+          action: drop

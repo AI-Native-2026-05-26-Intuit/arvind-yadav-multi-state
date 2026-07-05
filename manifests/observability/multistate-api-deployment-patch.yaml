@@ -1,0 +1,57 @@
+# manifests/observability/multistate-api-deployment-patch.yaml
+#
+# Strategic-merge patch over manifests/10-multistate-api.deployment.yaml.
+# Adds OTel Java agent + JSON logging profile for in-cluster observability.
+#
+# Apply:
+#   kubectl -n multistate-dev patch deployment multistate-api \
+#     --patch-file manifests/observability/multistate-api-deployment-patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multistate-api
+  namespace: multistate-dev
+spec:
+  template:
+    spec:
+      volumes:
+        - name: otel-agent
+          emptyDir: {}
+      initContainers:
+        - name: download-otel-agent
+          image: curlimages/curl:8.7.1
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              curl --silent --show-error --location \
+                "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.5.0/opentelemetry-javaagent.jar" \
+                -o /otel/opentelemetry-javaagent.jar
+          volumeMounts:
+            - name: otel-agent
+              mountPath: /otel
+      containers:
+        - name: multistate-api
+          volumeMounts:
+            - name: otel-agent
+              mountPath: /otel
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/otel/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+            - name: OTEL_SERVICE_NAME
+              value: multistate-api
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector.monitoring.svc.cluster.local:4317
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_traceidratio
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "0.1"
+            - name: OTEL_METRICS_EXPORTER
+              value: none
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
