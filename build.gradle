@@ -237,6 +237,7 @@ test {
     useJUnitPlatform()
     environment 'AWS_REGION', 'us-east-1'
     environment 'AWS_DEFAULT_REGION', 'us-east-1'
+    environment 'TENANTS_TABLE', 'tenants-dev'
     finalizedBy jacocoTestReport                // (2) report after every test run
     testLogging {
         events 'passed', 'skipped', 'failed'
