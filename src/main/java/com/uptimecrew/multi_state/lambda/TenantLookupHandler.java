@@ -44,12 +44,21 @@ public final class TenantLookupHandler
         ctx.getRemainingTimeInMillis());
 
     if (tenantId == null || tenantId.isBlank()) {
+      EmfPublisher.emitCount("TenantLookupBadInput");
       LOG.warn(
           "error response status=400 msg=missing tenantId correlationId={}", correlationId);
       return errorResponse(400, "missing tenantId path parameter", correlationId);
     }
 
-    TenantRecord record = loadFromDynamo(tenantId);
+    TenantRecord record;
+    try {
+      record = loadFromDynamo(tenantId);
+    } catch (Exception e) {
+      EmfPublisher.emitCount("TenantLookupFailure");
+      LOG.error(
+          "dynamodb lookup failure correlationId={} tenantId={}", correlationId, tenantId, e);
+      return errorResponse(500, "lookup failure", correlationId);
+    }
     if (record == null) {
       EmfPublisher.emitCount("TenantNotFound");
       LOG.warn(
@@ -74,6 +83,7 @@ public final class TenantLookupHandler
           .withBody(body)
           .build();
     } catch (Exception e) {
+      EmfPublisher.emitCount("TenantLookupFailure");
       LOG.error("serialisation failure correlationId={} tenantId={}", correlationId, tenantId, e);
       return errorResponse(500, "serialisation failure", correlationId);
     }
