@@ -181,6 +181,11 @@ management:
         http.server.requests: 100ms,200ms,300ms,500ms,800ms,1200ms,2000ms
     tags:
       app: multistate-api
+  prometheus:
+    metrics:
+      export:
+        exemplars:
+          enabled: true
   tracing:
     sampling:
       probability: 0.1

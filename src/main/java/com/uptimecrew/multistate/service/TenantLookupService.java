@@ -5,6 +5,7 @@ import com.uptimecrew.multistate.readmodel.TenantReadModelRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -76,7 +77,7 @@ public final class TenantLookupService {
     return byIdTimer.record(
         () -> {
           try {
-            Optional<TenantReadModel> found = allocationService.findById(id);
+            Optional<TenantReadModel> found = loadTenantFromStores(id);
             if (found.isPresent()) {
               byIdSuccess.increment();
             } else {
@@ -89,6 +90,12 @@ public final class TenantLookupService {
             throw ex;
           }
         });
+  }
+
+  /** Postgres / Mongo read path — child span visible in Tempo when the OTel agent is attached. */
+  @WithSpan
+  private Optional<TenantReadModel> loadTenantFromStores(String tenantId) {
+    return allocationService.findById(tenantId);
   }
 
   public List<TenantReadModel> nexusForState(String state) {

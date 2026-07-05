@@ -232,11 +232,13 @@
         },
         {
           "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{app=\"multistate-api\"}[5m])) by (le))",
+          "exemplar": true,
           "legendFormat": "p95",
           "refId": "B"
         },
         {
           "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{app=\"multistate-api\"}[5m])) by (le))",
+          "exemplar": true,
           "legendFormat": "p99",
           "refId": "C"
         }
