@@ -1,7 +1,7 @@
 # manifests/observability/multistate-api-deployment-patch.yaml
 #
 # Full Deployment manifest: base workload (manifests/10-multistate-api.deployment.yaml)
-# plus OTel Java agent init container and trace-export env (W5 D5 Task 3).
+# plus OTel Java agent baked into the image (W5 D5 Task 3) and trace-export env.
 #
 # Apply:
 #   kubectl apply -f manifests/observability/multistate-api-deployment-patch.yaml
@@ -40,23 +40,6 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         fsGroup: 65532
-      volumes:
-        - name: otel-agent
-          emptyDir: {}
-      initContainers:
-        - name: download-otel-agent
-          image: curlimages/curl:8.7.1
-          command:
-            - sh
-            - -c
-            - |
-              set -eu
-              curl --silent --show-error --location \
-                "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.5.0/opentelemetry-javaagent.jar" \
-                -o /otel/opentelemetry-javaagent.jar
-          volumeMounts:
-            - name: otel-agent
-              mountPath: /otel
       containers:
         - name: multistate-api
           image: uptimecrew/multistate-api:0.1.1
@@ -71,7 +54,7 @@ spec:
                 name: multistate-api-secrets
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: "-javaagent:/otel/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+              value: "-javaagent:/home/nonroot/otel/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
             - name: OTEL_SERVICE_NAME
               value: multistate-api
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -88,9 +71,6 @@ spec:
               value: none
             - name: SPRING_PROFILES_ACTIVE
               value: k8s
-          volumeMounts:
-            - name: otel-agent
-              mountPath: /otel
           resources:
             requests:
               cpu: 250m

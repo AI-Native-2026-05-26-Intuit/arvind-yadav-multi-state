@@ -1,0 +1,38 @@
+# Dockerfile.prebuilt — runtime image from a host-built bootJar (avoids Gradle TLS in Docker).
+# Usage: ./gradlew bootJar -x test && docker build -f Dockerfile.prebuilt -t uptimecrew/multistate-api:TAG .
+
+FROM eclipse-temurin:21-jre-jammy@sha256:199aebeb3adcde4910695cdebfe782ada38dadb6cc8013159b58d3724451befd AS extractor
+WORKDIR /extract
+COPY docker/staging/app.jar app.jar
+RUN java -Djarmode=layertools -jar app.jar extract --destination .
+
+FROM golang:1.25-alpine AS healthcheck
+WORKDIR /src
+COPY docker/healthcheck/go.mod ./
+COPY docker/healthcheck/main.go ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
+
+FROM gcr.io/distroless/java21-debian12:nonroot@sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d AS runtime
+
+ARG APP_VERSION=0.0.0
+ARG GIT_SHA=unset
+LABEL org.opencontainers.image.title="multistate-api"
+LABEL org.opencontainers.image.version="${APP_VERSION}"
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+
+USER 65532
+WORKDIR /home/nonroot
+
+COPY --from=extractor /extract/dependencies/          ./
+COPY --from=extractor /extract/spring-boot-loader/    ./
+COPY --from=extractor /extract/snapshot-dependencies/ ./
+COPY --from=extractor /extract/application/           ./
+COPY docker/otel/opentelemetry-javaagent.jar /home/nonroot/otel/opentelemetry-javaagent.jar
+COPY --from=healthcheck /healthcheck /home/nonroot/healthcheck
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=40s --retries=3 \
+  CMD ["/home/nonroot/healthcheck"]
+
+ENTRYPOINT ["java","org.springframework.boot.loader.launch.JarLauncher"]

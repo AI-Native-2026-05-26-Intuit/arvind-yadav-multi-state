@@ -41,7 +41,7 @@ COPY src/ src/
 RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
     --mount=type=cache,target=/workspace/.gradle,sharing=locked \
     --mount=type=cache,target=/workspace/build,sharing=locked \
-    ./gradlew --no-daemon --build-cache --configuration-cache bootJar -x test \
+    ./gradlew --no-daemon --build-cache bootJar -x test \
  && mkdir -p /staging \
  && cp build/libs/multistate-*.jar /staging/app.jar
 # Three cache mounts make a code-only rebuild fast:
@@ -93,6 +93,9 @@ COPY --from=extractor /extract/dependencies/          ./
 COPY --from=extractor /extract/spring-boot-loader/    ./
 COPY --from=extractor /extract/snapshot-dependencies/ ./
 COPY --from=extractor /extract/application/           ./
+# OTel Java agent v2.5.0 — vendored in build context (docker/otel/) to avoid
+# init-container / in-build TLS issues on locked-down networks.
+COPY docker/otel/opentelemetry-javaagent.jar /home/nonroot/otel/opentelemetry-javaagent.jar
 
 # Static Go health probe (world-executable 0755 from `go build`), used by the
 # HEALTHCHECK below since distroless has no shell/curl/wget.

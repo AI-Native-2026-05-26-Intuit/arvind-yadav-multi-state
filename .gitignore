@@ -36,3 +36,7 @@ pod-logs.txt
 .grafana/exported/
 sloth-out/
 /tmp/observability-smoke-*
+
+# OTel agent jar fetched by docker/otel/fetch-agent.sh (not committed; ~20 MB)
+docker/otel/opentelemetry-javaagent.jar
+docker/staging/
