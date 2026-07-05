@@ -240,3 +240,14 @@ logging:
   level:
     root: INFO
     com.uptimecrew.multistate: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: k8s
+
+multistate:
+  observability:
+    slow-lookup-delay-ms: 700
+    slow-lookup-id-prefix: tnt_synth_slow

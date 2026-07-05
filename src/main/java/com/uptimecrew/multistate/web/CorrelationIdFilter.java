@@ -1,5 +1,6 @@
 package com.uptimecrew.multistate.web;
 
+import io.opentelemetry.api.trace.Span;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,6 +34,7 @@ public final class CorrelationIdFilter extends OncePerRequestFilter {
       correlationId = UUID.randomUUID().toString();
     }
     MDC.put(MDC_KEY, correlationId);
+    Span.current().setAttribute("correlationId", correlationId);
     res.setHeader(HEADER, correlationId);
     try {
       chain.doFilter(req, res);

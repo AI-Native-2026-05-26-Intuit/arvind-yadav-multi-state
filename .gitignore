@@ -29,3 +29,10 @@ compose-logs.txt
 manifests/*.local.yaml
 pod-logs.txt
 .k3d/
+
+# Observability artefacts the build / CI tooling produces (W5 D5).
+# Generated dashboards from `grafana export` go here; only the
+# authoritative .grafana/dashboards/*.json belongs in git.
+.grafana/exported/
+sloth-out/
+/tmp/observability-smoke-*

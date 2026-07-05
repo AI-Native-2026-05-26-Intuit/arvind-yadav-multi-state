@@ -28,7 +28,7 @@ class TenantLookupServiceTest {
   @BeforeEach
   void setUp() {
     registry = new SimpleMeterRegistry();
-    service = new TenantLookupService(registry, allocationService, readModelRepository);
+    service = new TenantLookupService(registry, allocationService, readModelRepository, 0L, "tnt_synth_slow");
   }
 
   @Test

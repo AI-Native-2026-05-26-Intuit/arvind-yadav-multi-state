@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -37,12 +38,19 @@ public final class TenantLookupService {
   private final Timer byIdTimer;
   private final Timer byStateTimer;
 
+  private final long slowLookupDelayMs;
+  private final String slowLookupIdPrefix;
+
   public TenantLookupService(MeterRegistry registry,
                              AllocationService allocationService,
-                             TenantReadModelRepository readModelRepository) {
+                             TenantReadModelRepository readModelRepository,
+                             @Value("${multistate.observability.slow-lookup-delay-ms:0}") long slowLookupDelayMs,
+                             @Value("${multistate.observability.slow-lookup-id-prefix:tnt_synth_slow}") String slowLookupIdPrefix) {
     this.allocationService = Objects.requireNonNull(allocationService, "allocationService");
     this.readModelRepository = Objects.requireNonNull(readModelRepository, "readModelRepository");
     Objects.requireNonNull(registry, "registry");
+    this.slowLookupDelayMs = slowLookupDelayMs;
+    this.slowLookupIdPrefix = Objects.requireNonNull(slowLookupIdPrefix, "slowLookupIdPrefix");
 
     this.byIdSuccess = evaluationCounter(registry, "by_id", "success");
     this.byIdNotFound = evaluationCounter(registry, "by_id", "not_found");
@@ -95,6 +103,13 @@ public final class TenantLookupService {
   /** Postgres / Mongo read path — child span visible in Tempo when the OTel agent is attached. */
   @WithSpan
   private Optional<TenantReadModel> loadTenantFromStores(String tenantId) {
+    if (slowLookupDelayMs > 0 && tenantId.startsWith(slowLookupIdPrefix)) {
+      try {
+        Thread.sleep(slowLookupDelayMs);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+      }
+    }
     return allocationService.findById(tenantId);
   }
 

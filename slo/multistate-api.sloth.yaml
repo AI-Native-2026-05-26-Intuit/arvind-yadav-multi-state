@@ -1,0 +1,33 @@
+# slo/multistate-api.sloth.yaml
+#
+# Sloth spec — human-authored SLO source. Regenerate the PrometheusRule with:
+#   sloth generate -i slo/multistate-api.sloth.yaml \
+#                  -o manifests/observability/multistate-api-prometheusrule.yaml
+# CI runs the same command and fails on drift via git diff --exit-code.
+version: "prometheus/v1"
+service: "multistate-api"
+labels:
+  team: "multistate"
+  release: "kube-prometheus-stack"
+slos:
+  - name: "multistate-api-latency"
+    objective: 99.0
+    description: "99% of GET /tenants/{tenantId} responses under 500ms over 30d."
+    sli:
+      events:
+        error_query: |
+          sum(rate(http_server_requests_seconds_bucket{app="multistate-api",uri="/tenants/{tenantId}",status!~"5..",le="0.5"}[{{.window}}]))
+        total_query: |
+          sum(rate(http_server_requests_seconds_count{app="multistate-api",uri="/tenants/{tenantId}",status!~"5.."}[{{.window}}]))
+    alerting:
+      name: "multistate-apiLatencySLOBurn"
+      labels:
+        category: "latency"
+        team: "multistate"
+      annotations:
+        runbook_url: "https://runbooks.example.internal/multistate-api/latency-slo-burn"
+        summary: "multistate-api GET /tenants/{tenantId} latency SLO is burning error budget."
+      page_alert:
+        labels: { severity: "page" }
+      ticket_alert:
+        labels: { severity: "ticket" }
