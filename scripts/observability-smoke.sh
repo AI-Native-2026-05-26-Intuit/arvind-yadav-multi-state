@@ -3,7 +3,9 @@
 set -euo pipefail
 
 NS="multistate-dev"
-OBS_NS="${OBS_NS:-observability}"
+MON_NS="${MON_NS:-monitoring}"
+LOKI_NS="${LOKI_NS:-observability}"
+TEMPO_NS="${TEMPO_NS:-observability}"
 APP="multistate-api"
 CORR_ID="${CORR_ID:-smoke-corr-$(date +%s)}"
 URL="http://${APP}.${NS}.svc.cluster.local:8080/tenants/tnt_synth_001"
@@ -14,30 +16,30 @@ exec > >(tee -a "${LOG_FILE}") 2>&1
 
 prom_query() {
   local query="$1"
-  kubectl -n "${OBS_NS}" run --rm -i --restart=Never obs-prom-query \
+  kubectl -n "${MON_NS}" run --rm -i --restart=Never obs-prom-query \
     --image=curlimages/curl:8.7.1 -- \
     sh -c "curl --silent --fail --get \
       --data-urlencode 'query=${query}' \
-      http://kube-prometheus-stack-prometheus.${OBS_NS}.svc.cluster.local:9090/api/v1/query"
+      http://kube-prometheus-stack-prometheus.${MON_NS}.svc.cluster.local:9090/api/v1/query"
 }
 
 loki_query() {
   local query="$1"
-  kubectl -n "${OBS_NS}" run --rm -i --restart=Never obs-loki-query \
+  kubectl -n "${LOKI_NS}" run --rm -i --restart=Never obs-loki-query \
     --image=curlimages/curl:8.7.1 -- \
     sh -c "curl --silent --fail --get \
       --data-urlencode 'query=${query}' \
       --data-urlencode 'limit=20' \
-      http://loki.${OBS_NS}.svc.cluster.local:3100/loki/api/v1/query"
+      http://loki.${LOKI_NS}.svc.cluster.local:3100/loki/api/v1/query"
 }
 
 tempo_search() {
   local query="$1"
-  kubectl -n "${OBS_NS}" run --rm -i --restart=Never obs-tempo-query \
+  kubectl -n "${TEMPO_NS}" run --rm -i --restart=Never obs-tempo-query \
     --image=curlimages/curl:8.7.1 -- \
     sh -c "curl --silent --fail --get \
       --data-urlencode 'q=${query}' \
-      http://tempo.${OBS_NS}.svc.cluster.local:3200/api/search"
+      http://tempo.${TEMPO_NS}.svc.cluster.local:3200/api/search"
 }
 
 assert_actuator_metric() {
@@ -63,13 +65,13 @@ echo "[2/4] waiting ${WAIT_SEC}s for scrape / ingest"
 sleep "${WAIT_SEC}"
 
 echo "[3/4] Prometheus sample for multistate_nexus_evaluations_total"
-if kubectl get ns "${OBS_NS}" >/dev/null 2>&1 \
-    && kubectl -n "${OBS_NS}" get svc kube-prometheus-stack-prometheus >/dev/null 2>&1; then
+if kubectl get ns "${MON_NS}" >/dev/null 2>&1 \
+    && kubectl -n "${MON_NS}" get svc kube-prometheus-stack-prometheus >/dev/null 2>&1; then
   prom_query "multistate_nexus_evaluations_total{app=\"${APP}\"}" \
     | grep -E '"value"|"metric"' >/dev/null
 else
   if [ "${REQUIRE_PLG}" = "true" ]; then
-    echo "ERROR: observability Prometheus service not found in ${OBS_NS}" >&2
+    echo "ERROR: Prometheus service not found in ${MON_NS}" >&2
     exit 1
   fi
   echo "  PLG absent — checking actuator/prometheus on ${APP}"
@@ -77,24 +79,24 @@ else
 fi
 
 echo "[4/4] Loki log line + Tempo trace for correlation id"
-if kubectl -n "${OBS_NS}" get svc loki >/dev/null 2>&1; then
+if kubectl -n "${LOKI_NS}" get svc loki >/dev/null 2>&1; then
   loki_query "{app=\"${APP}\"} | json | correlationId=\"${CORR_ID}\"" \
     | grep -F 'lookup attempted' >/dev/null
 else
   if [ "${REQUIRE_PLG}" = "true" ]; then
-    echo "ERROR: Loki service not found in ${OBS_NS}" >&2
+    echo "ERROR: Loki service not found in ${LOKI_NS}" >&2
     exit 1
   fi
   echo "  Loki absent — checking pod logs for correlationId"
   assert_pod_log_line
 fi
 
-if kubectl -n "${OBS_NS}" get svc tempo >/dev/null 2>&1; then
+if kubectl -n "${TEMPO_NS}" get svc tempo >/dev/null 2>&1; then
   tempo_search "{ resource.service.name=\"${APP}\" && span.correlationId=\"${CORR_ID}\" }" \
     | grep -E 'traceID|traceId' >/dev/null
 else
   if [ "${REQUIRE_PLG}" = "true" ]; then
-    echo "ERROR: Tempo service not found in ${OBS_NS}" >&2
+    echo "ERROR: Tempo service not found in ${TEMPO_NS}" >&2
     exit 1
   fi
   echo "  Tempo absent — skipping trace search (correlation id on span requires PLG stack)"
