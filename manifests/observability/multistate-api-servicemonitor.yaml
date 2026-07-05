@@ -1,0 +1,25 @@
+# manifests/observability/multistate-api-servicemonitor.yaml
+# Prometheus Operator scrape target for Spring Boot Actuator /actuator/prometheus.
+# release: kube-prometheus-stack is REQUIRED — the operator's default ServiceMonitor
+# selector is scoped to that label; without it scrapes silently never fire.
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: multistate-api
+  namespace: multistate-dev
+  labels:
+    app.kubernetes.io/name: multistate-api
+    app.kubernetes.io/part-of: multistate
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multistate-api
+  namespaceSelector:
+    matchNames:
+      - multistate-dev
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
