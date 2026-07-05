@@ -72,6 +72,14 @@ COPY docker/healthcheck/go.mod ./
 COPY docker/healthcheck/main.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
 
+# -------- 2c. OTEL AGENT STAGE --------
+# Fetched at image build time so CI does not rely on docker/otel/*.jar (gitignored).
+FROM curlimages/curl:8.7.1 AS otel-agent
+ARG OTEL_JAVAAGENT_VERSION=2.5.0
+RUN curl -fsSL \
+  -o /opentelemetry-javaagent.jar \
+  "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar"
+
 # -------- 3. RUNTIME STAGE --------
 # Distroless JRE. No shell, no package manager, no user-management tools.
 FROM gcr.io/distroless/java21-debian12:nonroot@sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d AS runtime
@@ -93,9 +101,8 @@ COPY --from=extractor /extract/dependencies/          ./
 COPY --from=extractor /extract/spring-boot-loader/    ./
 COPY --from=extractor /extract/snapshot-dependencies/ ./
 COPY --from=extractor /extract/application/           ./
-# OTel Java agent v2.5.0 — vendored in build context (docker/otel/) to avoid
-# init-container / in-build TLS issues on locked-down networks.
-COPY docker/otel/opentelemetry-javaagent.jar /home/nonroot/otel/opentelemetry-javaagent.jar
+# OTel Java agent v2.5.0 — from otel-agent stage (no gitignored blob in build context).
+COPY --from=otel-agent /opentelemetry-javaagent.jar /home/nonroot/otel/opentelemetry-javaagent.jar
 
 # Static Go health probe (world-executable 0755 from `go build`), used by the
 # HEALTHCHECK below since distroless has no shell/curl/wget.
