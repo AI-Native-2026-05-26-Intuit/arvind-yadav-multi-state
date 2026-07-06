@@ -77,7 +77,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
 FROM curlimages/curl:8.7.1 AS otel-agent
 ARG OTEL_JAVAAGENT_VERSION=2.5.0
 RUN curl -fsSL \
-  -o /opentelemetry-javaagent.jar \
+  -o /tmp/opentelemetry-javaagent.jar \
   "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar"
 
 # -------- 3. RUNTIME STAGE --------
@@ -102,7 +102,7 @@ COPY --from=extractor /extract/spring-boot-loader/    ./
 COPY --from=extractor /extract/snapshot-dependencies/ ./
 COPY --from=extractor /extract/application/           ./
 # OTel Java agent v2.5.0 — from otel-agent stage (no gitignored blob in build context).
-COPY --from=otel-agent /opentelemetry-javaagent.jar /home/nonroot/otel/opentelemetry-javaagent.jar
+COPY --from=otel-agent /tmp/opentelemetry-javaagent.jar /home/nonroot/otel/opentelemetry-javaagent.jar
 
 # Static Go health probe (world-executable 0755 from `go build`), used by the
 # HEALTHCHECK below since distroless has no shell/curl/wget.
