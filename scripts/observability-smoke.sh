@@ -42,10 +42,15 @@ tempo_search() {
       http://tempo.${TEMPO_NS}.svc.cluster.local:3200/api/search"
 }
 
+actuator_prometheus() {
+  kubectl run --rm -i --restart=Never -n "${NS}" obs-smoke-prom \
+    --image=curlimages/curl:8.7.1 -- \
+    curl --silent --show-error --fail \
+      "http://${APP}.${NS}.svc.cluster.local:8080/actuator/prometheus"
+}
+
 assert_actuator_metric() {
-  kubectl exec -n "${NS}" "deploy/${APP}" -- \
-    wget -qO- "http://localhost:8080/actuator/prometheus" \
-    | grep -q 'multistate_nexus_evaluations_total'
+  actuator_prometheus | grep -q 'multistate_nexus_evaluations_total'
 }
 
 assert_pod_log_line() {
