@@ -50,9 +50,13 @@ EOF
 }
 
 ensure_otel_agent_jar() {
-  if [ ! -f docker/otel/opentelemetry-javaagent.jar ]; then
-    echo "==> Fetching OTel Java agent into docker/otel/"
+  if [ ! -s docker/otel/opentelemetry-javaagent.jar ]; then
+    echo "==> Fetching OTel Java agent into docker/otel/ (host curl; avoids Docker build TLS)"
     bash docker/otel/fetch-agent.sh
+  fi
+  if [ ! -s docker/otel/opentelemetry-javaagent.jar ]; then
+    echo "ERROR: docker/otel/opentelemetry-javaagent.jar missing — run docker/otel/fetch-agent.sh" >&2
+    exit 1
   fi
 }
 
@@ -82,6 +86,12 @@ ensure_app_prereqs() {
   kubectl create secret generic multistate-api-secrets \
     -n "${NS}" \
     --from-literal=SPRING_DATASOURCE_PASSWORD="${PG_PASSWORD:-devpass}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  kubectl create secret generic multistate-alert-routing \
+    -n "${NS}" \
+    --from-literal=slack-api-url="https://hooks.slack.com/services/PLACEHOLDER" \
+    --from-literal=pagerduty-routing-key="PLACEHOLDER_PAGERDUTY_INTEGRATION_KEY" \
     --dry-run=client -o yaml | kubectl apply -f -
 
   kubectl create configmap postgres-init-sql \

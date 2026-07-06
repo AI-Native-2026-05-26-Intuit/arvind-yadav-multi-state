@@ -1,0 +1,3 @@
+# Pin to images pre-imported by scripts/observability-plg-install.sh
+tempo:
+  tag: 2.6.1

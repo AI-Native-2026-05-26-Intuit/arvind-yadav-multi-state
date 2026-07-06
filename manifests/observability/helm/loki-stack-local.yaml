@@ -1,0 +1,9 @@
+# Pin to images pre-imported by scripts/observability-plg-install.sh.
+# loki-stack chart generates Loki 2.x config — do not use Loki 3.x image tags.
+loki:
+  image:
+    tag: 2.6.1
+
+promtail:
+  image:
+    tag: 2.9.3
