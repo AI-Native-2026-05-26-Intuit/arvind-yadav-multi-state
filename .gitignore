@@ -6,6 +6,14 @@ out/
 *.iml
 bin/
 
+# SAM build state (W5 D4). NEVER commit any of these.
+.aws-sam/
+samconfig.toml
+events/*.local.json
+/tmp/sam-smoke-body
+target/
+env.json
+
 # Local-dev secrets (compose secrets:)
 secrets/*
 !secrets/.gitkeep
