@@ -8,63 +8,110 @@ LOKI_NS="${LOKI_NS:-observability}"
 TEMPO_NS="${TEMPO_NS:-observability}"
 APP="multistate-api"
 CORR_ID="${CORR_ID:-smoke-corr-$(date +%s)}"
+POD_SUFFIX="${CORR_ID//_/-}"
 URL="http://${APP}.${NS}.svc.cluster.local:8080/tenants/tnt_synth_001"
+PROM_URL="http://${APP}.${NS}.svc.cluster.local:8080/actuator/prometheus"
 WAIT_SEC="${OBS_SMOKE_WAIT_SEC:-45}"
 REQUIRE_PLG="${OBS_SMOKE_REQUIRE_PLG:-true}"
 LOG_FILE="${OBS_SMOKE_LOG_FILE:-/tmp/observability-smoke-${CORR_ID}.log}"
+CURL_IMAGE="${OBS_SMOKE_CURL_IMAGE:-curlimages/curl:8.7.1}"
 exec > >(tee -a "${LOG_FILE}") 2>&1
+
+# Ephemeral curl pod: -i waits for completion in CI; IfNotPresent uses k3d-imported images.
+run_curl_pod() {
+  local pod_name="$1"
+  shift
+  kubectl run --rm -i --restart=Never -n "${NS}" "${pod_name}" \
+    --image="${CURL_IMAGE}" \
+    --image-pull-policy=IfNotPresent \
+    --command -- sh -ec "$*"
+}
 
 prom_query() {
   local query="$1"
-  kubectl -n "${MON_NS}" run --rm -i --restart=Never obs-prom-query \
-    --image=curlimages/curl:8.7.1 -- \
-    sh -c "curl --silent --fail --get \
+  kubectl -n "${MON_NS}" run --rm -i --restart=Never "obs-prom-query-${POD_SUFFIX}" \
+    --image="${CURL_IMAGE}" \
+    --image-pull-policy=IfNotPresent \
+    --command -- sh -ec \
+    "curl --connect-timeout 15 --max-time 60 --silent --fail --get \
       --data-urlencode 'query=${query}' \
-      http://kube-prometheus-stack-prometheus.${MON_NS}.svc.cluster.local:9090/api/v1/query"
+      'http://kube-prometheus-stack-prometheus.${MON_NS}.svc.cluster.local:9090/api/v1/query'"
 }
 
 loki_query() {
   local query="$1"
-  kubectl -n "${LOKI_NS}" run --rm -i --restart=Never obs-loki-query \
-    --image=curlimages/curl:8.7.1 -- \
-    sh -c "curl --silent --fail --get \
+  kubectl -n "${LOKI_NS}" run --rm -i --restart=Never "obs-loki-query-${POD_SUFFIX}" \
+    --image="${CURL_IMAGE}" \
+    --image-pull-policy=IfNotPresent \
+    --command -- sh -ec \
+    "curl --connect-timeout 15 --max-time 60 --silent --fail --get \
       --data-urlencode 'query=${query}' \
       --data-urlencode 'limit=20' \
-      http://loki.${LOKI_NS}.svc.cluster.local:3100/loki/api/v1/query"
+      'http://loki.${LOKI_NS}.svc.cluster.local:3100/loki/api/v1/query'"
 }
 
 tempo_search() {
   local query="$1"
-  kubectl -n "${TEMPO_NS}" run --rm -i --restart=Never obs-tempo-query \
-    --image=curlimages/curl:8.7.1 -- \
-    sh -c "curl --silent --fail --get \
+  kubectl -n "${TEMPO_NS}" run --rm -i --restart=Never "obs-tempo-query-${POD_SUFFIX}" \
+    --image="${CURL_IMAGE}" \
+    --image-pull-policy=IfNotPresent \
+    --command -- sh -ec \
+    "curl --connect-timeout 15 --max-time 60 --silent --fail --get \
       --data-urlencode 'q=${query}' \
-      http://tempo.${TEMPO_NS}.svc.cluster.local:3200/api/search"
-}
-
-actuator_prometheus() {
-  kubectl run --rm -i --restart=Never -n "${NS}" obs-smoke-prom \
-    --image=curlimages/curl:8.7.1 -- \
-    curl --silent --show-error --fail \
-      "http://${APP}.${NS}.svc.cluster.local:8080/actuator/prometheus"
+      'http://tempo.${TEMPO_NS}.svc.cluster.local:3200/api/search'"
 }
 
 assert_actuator_metric() {
-  actuator_prometheus | grep -q 'multistate_nexus_evaluations_total'
+  local attempt snippet
+  for attempt in $(seq 1 6); do
+    if run_curl_pod "obs-smoke-prom-${POD_SUFFIX}-${attempt}" \
+        "curl --connect-timeout 15 --max-time 120 --silent --show-error --fail '${PROM_URL}' \
+          | grep -qE 'multistate_nexus_evaluations(_total)?'"; then
+      echo "  found nexus evaluation metric on /actuator/prometheus (attempt ${attempt})"
+      return 0
+    fi
+    echo "  metric not visible yet (attempt ${attempt}/6); retrying in 5s..."
+    sleep 5
+  done
+  echo "ERROR: /actuator/prometheus missing multistate_nexus_evaluations metric" >&2
+  snippet="$(run_curl_pod "obs-smoke-prom-debug-${POD_SUFFIX}" \
+    "curl --connect-timeout 15 --max-time 120 --silent --show-error '${PROM_URL}' \
+      | grep -E 'multistate|http_server_requests' | head -20 || true" 2>/dev/null || true)"
+  if [ -n "${snippet}" ]; then
+    echo "--- prometheus snippet ---" >&2
+    echo "${snippet}" >&2
+  else
+    echo "  (could not fetch /actuator/prometheus body)" >&2
+  fi
+  return 1
 }
 
 assert_pod_log_line() {
-  kubectl logs -n "${NS}" "deploy/${APP}" --tail=500 \
-    | grep -F "\"correlationId\":\"${CORR_ID}\"" \
-    | grep -q 'lookup attempted'
+  local attempt hits
+  for attempt in $(seq 1 6); do
+  # Deployment has multiple replicas; aggregate logs from every ready pod.
+    hits="$(kubectl logs -n "${NS}" -l "app.kubernetes.io/name=${APP}" \
+      --tail=1000 --max-log-requests=10 2>/dev/null \
+      | grep -F "\"correlationId\":\"${CORR_ID}\"" \
+      | grep -c 'lookup attempted' || true)"
+    if [ "${hits}" -ge 1 ]; then
+      echo "  found correlationId + lookup attempted in pod logs (attempt ${attempt})"
+      return 0
+    fi
+    echo "  log line not visible yet (attempt ${attempt}/6); retrying in 5s..."
+    sleep 5
+  done
+  echo "ERROR: no pod log with correlationId=${CORR_ID} and lookup attempted" >&2
+  kubectl logs -n "${NS}" -l "app.kubernetes.io/name=${APP}" --tail=30 --max-log-requests=10 >&2 || true
+  return 1
 }
 
 echo "[1/4] request with correlation id ${CORR_ID}"
-kubectl run --rm -i --restart=Never -n "${NS}" obs-smoke-curl \
-  --image=curlimages/curl:8.7.1 -- \
-  curl --silent --show-error --output /dev/null \
-    -H "x-correlation-id: ${CORR_ID}" \
-    "${URL}"
+run_curl_pod "obs-smoke-curl-${POD_SUFFIX}" \
+  "code=\$(curl --connect-timeout 15 --max-time 60 --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    -H 'x-correlation-id: ${CORR_ID}' '${URL}'); \
+   echo HTTP \${code}; \
+   test \"\${code}\" = '200' -o \"\${code}\" = '404'"
 
 echo "[2/4] waiting ${WAIT_SEC}s for scrape / ingest"
 sleep "${WAIT_SEC}"
