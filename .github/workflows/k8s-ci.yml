@@ -72,7 +72,15 @@ jobs:
             --servers 1 --agents 2 \
             --port "8080:80@loadbalancer" \
             --k3s-arg "--disable=traefik@server:0" \
-            --wait
+            --wait \
+            --kubeconfig-update-default \
+            --kubeconfig-switch-context
+          k3d kubeconfig merge multistate-ci \
+            --kubeconfig-merge-default \
+            --kubeconfig-switch-context
+          kubectl config current-context
+          kubectl cluster-info --request-timeout=60s
+          kubectl get nodes -o wide
 
       - name: Import image into the cluster
         run: k3d image import uptimecrew/multistate-api:${{ github.sha }} -c multistate-ci
@@ -167,7 +175,11 @@ jobs:
       - name: Capture diagnostics on failure
         if: failure()
         run: |
-          kubectl get all -n multistate-dev
+          k3d kubeconfig merge multistate-ci \
+            --kubeconfig-merge-default \
+            --kubeconfig-switch-context || true
+          kubectl cluster-info || true
+          kubectl get all -n multistate-dev || true
           kubectl describe deploy/multistate-api -n multistate-dev
           kubectl describe pod -n multistate-dev -l app.kubernetes.io/name=multistate-api
           kubectl logs deploy/multistate-api -n multistate-dev \

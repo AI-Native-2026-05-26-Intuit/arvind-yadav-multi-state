@@ -80,10 +80,24 @@ jobs:
         run: |
           k3d cluster create multistate-obs-ci \
             --servers 1 --agents 1 \
-            --wait
+            --wait \
+            --kubeconfig-update-default \
+            --kubeconfig-switch-context
+          k3d kubeconfig merge multistate-obs-ci \
+            --kubeconfig-merge-default \
+            --kubeconfig-switch-context
+          kubectl config current-context
+          kubectl cluster-info --request-timeout=60s
+          kubectl get nodes -o wide
 
       - name: Import image
         run: k3d image import uptimecrew/multistate-api:${{ github.sha }} -c multistate-obs-ci
+
+      - name: Import backing-service images into k3d
+        run: |
+          chmod +x scripts/k3d-import-images.sh
+          K3D_CLUSTER=multistate-obs-ci ./scripts/k3d-import-images.sh \
+            postgres:16 redis:7 mongo:7 apache/kafka:3.9.2 curlimages/curl:8.7.1
 
       - name: Deploy backing services + app
         run: |
@@ -137,6 +151,14 @@ jobs:
           diff -u manifests/observability/multistate-api-prometheusrule.yaml \
             sloth-out/multistate-api-prometheusrule.yaml \
             > sloth-drift.diff || true
+          k3d kubeconfig merge multistate-obs-ci \
+            --kubeconfig-merge-default \
+            --kubeconfig-switch-context || true
+          kubectl cluster-info || true
+          kubectl get all -n multistate-dev || true
+          kubectl describe deploy/multistate-api -n multistate-dev || true
+          kubectl logs deploy/multistate-api -n multistate-dev --tail=200 \
+            > /tmp/observability-deploy-logs.txt || true
 
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -144,6 +166,7 @@ jobs:
           name: observability-ci-diagnostics
           path: |
             /tmp/observability-smoke-*.log
+            /tmp/observability-deploy-logs.txt
             sloth-drift.diff
           if-no-files-found: ignore
           retention-days: 7
