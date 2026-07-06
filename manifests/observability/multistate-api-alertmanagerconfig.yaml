@@ -1,7 +1,8 @@
 # manifests/observability/multistate-api-alertmanagerconfig.yaml
 #
 # Routes alerts labelled team=multistate to Slack (ticket) and PagerDuty (page).
-# Webhook URLs are placeholders — real secrets land via sealed-secrets (W6 D1).
+# apiURL / routingKey reference multistate-alert-routing (SecretKeySelector; operator v0.77+).
+# Placeholder values in that secret — real credentials via sealed-secrets (W6 D1).
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
 metadata:
@@ -32,11 +33,15 @@ spec:
   receivers:
     - name: multistate-slack
       slackConfigs:
-        - apiURL: https://hooks.slack.com/services/PLACEHOLDER
+        - apiURL:
+            name: multistate-alert-routing
+            key: slack-api-url
           channel: "#multistate-alerts"
           title: '{{ .GroupLabels.alertname }}'
           text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
     - name: multistate-pager
       pagerdutyConfigs:
-        - routingKey: PLACEHOLDER_PAGERDUTY_INTEGRATION_KEY
+        - routingKey:
+            name: multistate-alert-routing
+            key: pagerduty-routing-key
           description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'

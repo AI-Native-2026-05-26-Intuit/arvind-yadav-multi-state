@@ -5,6 +5,25 @@ image:
   repository: otel/opentelemetry-collector-contrib
   tag: "0.110.0"
 
+useGOMEMLIMIT: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+livenessProbe:
+  initialDelaySeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 5
+
+readinessProbe:
+  initialDelaySeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 5
+
 config:
   receivers:
     otlp:

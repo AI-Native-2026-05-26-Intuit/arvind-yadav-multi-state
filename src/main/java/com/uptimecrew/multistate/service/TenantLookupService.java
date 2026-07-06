@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
  * Counters and timers are built once in the constructor — never on the hot path.
  */
 @Service
-public final class TenantLookupService {
+public class TenantLookupService {
 
   private static final Logger LOG = LoggerFactory.getLogger(TenantLookupService.class);
 

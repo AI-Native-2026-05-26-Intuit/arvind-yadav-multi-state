@@ -313,7 +313,7 @@
       },
       "targets": [
         {
-          "expr": "http_server_active_requests{app=\"multistate-api\"}",
+          "expr": "sum(http_server_requests_active_seconds_gcount{app=\"multistate-api\"})",
           "legendFormat": "in-flight",
           "refId": "A"
         }
