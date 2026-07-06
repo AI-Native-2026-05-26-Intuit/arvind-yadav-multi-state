@@ -12,12 +12,10 @@ COPY docker/healthcheck/go.mod ./
 COPY docker/healthcheck/main.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
 
-FROM alpine:3.20 AS otel-agent
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS otel-agent
 ARG OTEL_JAVAAGENT_VERSION=2.5.0
-RUN apk add --no-cache curl \
-  && curl -fsSL \
-    -o /tmp/opentelemetry-javaagent.jar \
-    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar" \
+RUN wget -qO /tmp/opentelemetry-javaagent.jar \
+  "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar" \
   && test -s /tmp/opentelemetry-javaagent.jar
 
 FROM gcr.io/distroless/java21-debian12:nonroot@sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d AS runtime

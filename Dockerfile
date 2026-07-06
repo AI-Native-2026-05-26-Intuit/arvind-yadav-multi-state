@@ -74,13 +74,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
 
 # -------- 2c. OTEL AGENT STAGE --------
 # Fetched at image build time so CI does not rely on docker/otel/*.jar (gitignored).
-# Alpine + curl as root — curlimages/curl is non-root and cannot write large jars reliably.
-FROM alpine:3.20 AS otel-agent
+# Alpine busybox wget as root — avoids curlimages/curl write failures and apk pin lint.
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS otel-agent
 ARG OTEL_JAVAAGENT_VERSION=2.5.0
-RUN apk add --no-cache curl \
-  && curl -fsSL \
-    -o /tmp/opentelemetry-javaagent.jar \
-    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar" \
+RUN wget -qO /tmp/opentelemetry-javaagent.jar \
+  "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar" \
   && test -s /tmp/opentelemetry-javaagent.jar
 
 # -------- 3. RUNTIME STAGE --------
