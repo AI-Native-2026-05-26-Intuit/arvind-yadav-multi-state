@@ -23,9 +23,11 @@ fi
 echo "Importing ${IMAGE} into ${CLUSTER}..."
 k3d image import "${IMAGE}" -c "${CLUSTER}"
 
-# 3. Apply the manifest tree in lexical order (00-, 10-, 20-, ...).
-echo "Applying manifests/..."
-kubectl apply -f manifests/
+# 3. Apply the W5 D3 app manifests only (observability layer is separate).
+echo "Applying manifests/[0-9]*.yaml..."
+for f in manifests/[0-9]*.yaml; do
+  kubectl apply -f "$f"
+done
 
 # 4. Block until the rollout completes (or fail loudly).
 kubectl rollout status deploy/multistate-api \

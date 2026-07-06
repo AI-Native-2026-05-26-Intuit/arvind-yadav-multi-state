@@ -70,7 +70,7 @@ helm upgrade --install tempo grafana/tempo \
 echo "==> OTel collector (${MON_NS}) — service otel-collector:4317"
 helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
   -n "${MON_NS}" \
-  -f "${REPO_ROOT}/manifests/observability/otel-collector-values.yaml" \
+  -f "${REPO_ROOT}/manifests/observability/helm/otel-collector-values.yaml" \
   --wait --timeout 5m
 
 echo ""
