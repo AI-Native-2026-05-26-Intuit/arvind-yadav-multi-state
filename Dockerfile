@@ -41,7 +41,7 @@ COPY src/ src/
 RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
     --mount=type=cache,target=/workspace/.gradle,sharing=locked \
     --mount=type=cache,target=/workspace/build,sharing=locked \
-    ./gradlew --no-daemon --build-cache --configuration-cache bootJar -x test \
+    ./gradlew --no-daemon --build-cache bootJar -x test \
  && mkdir -p /staging \
  && cp build/libs/multistate-*.jar /staging/app.jar
 # Three cache mounts make a code-only rebuild fast:
@@ -72,6 +72,15 @@ COPY docker/healthcheck/go.mod ./
 COPY docker/healthcheck/main.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /healthcheck .
 
+# -------- 2c. OTEL AGENT STAGE --------
+# Fetched at image build time so CI does not rely on docker/otel/*.jar (gitignored).
+# Alpine busybox wget as root — avoids curlimages/curl write failures and apk pin lint.
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS otel-agent
+ARG OTEL_JAVAAGENT_VERSION=2.26.1
+RUN wget -qO /tmp/opentelemetry-javaagent.jar \
+  "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar" \
+  && test -s /tmp/opentelemetry-javaagent.jar
+
 # -------- 3. RUNTIME STAGE --------
 # Distroless JRE. No shell, no package manager, no user-management tools.
 FROM gcr.io/distroless/java21-debian12:nonroot@sha256:7e37784d94dccbf5ccb195c73b295f5ad00cd266512dfbac12eb9c3c28f8077d AS runtime
@@ -93,6 +102,8 @@ COPY --from=extractor /extract/dependencies/          ./
 COPY --from=extractor /extract/spring-boot-loader/    ./
 COPY --from=extractor /extract/snapshot-dependencies/ ./
 COPY --from=extractor /extract/application/           ./
+# OTel Java agent v2.26.1 — from otel-agent stage (no gitignored blob in build context).
+COPY --from=otel-agent /tmp/opentelemetry-javaagent.jar /home/nonroot/otel/opentelemetry-javaagent.jar
 
 # Static Go health probe (world-executable 0755 from `go build`), used by the
 # HEALTHCHECK below since distroless has no shell/curl/wget.

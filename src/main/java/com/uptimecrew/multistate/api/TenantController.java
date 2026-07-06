@@ -4,10 +4,12 @@ import com.uptimecrew.multistate.clients.IdentityProfile;
 import com.uptimecrew.multistate.clients.IdentityService;
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
 import com.uptimecrew.multistate.service.AllocationService;
+import com.uptimecrew.multistate.service.TenantLookupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -32,15 +35,33 @@ public class TenantController {
     private static final Logger LOG = LoggerFactory.getLogger(TenantController.class);
 
     private final AllocationService service;
+    private final TenantLookupService tenantLookup;
     private final IdempotencyService idempotency;
     private final IdentityService identityService;
 
     public TenantController(AllocationService service,
+                            TenantLookupService tenantLookup,
                             IdempotencyService idempotency,
                             IdentityService identityService) {
         this.service = service;
+        this.tenantLookup = tenantLookup;
         this.idempotency = idempotency;
         this.identityService = identityService;
+    }
+
+    @GetMapping(params = "state")
+    @PreAuthorize("hasAuthority('SCOPE_tenants.read') and hasRole('TENANT_READER')")
+    @Operation(summary = "List tenants with nexus in a state",
+               description = "Returns tenants whose primary state matches the query parameter.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Zero or more tenants in the state"),
+        @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+        @ApiResponse(responseCode = "403", description = "JWT present but lacks required scope or role")
+    })
+    public List<TenantReadModel> nexusForState(@RequestParam String state,
+                                               @AuthenticationPrincipal Jwt jwt) {
+        LOG.info("nexusForState state={} subject={}", state, jwt.getSubject());
+        return tenantLookup.nexusForState(state);
     }
 
     @GetMapping("/{id}")
@@ -56,7 +77,7 @@ public class TenantController {
     public ResponseEntity<TenantReadModel> getById(@PathVariable String id,
                                                    @AuthenticationPrincipal Jwt jwt) {
         LOG.info("get id={} subject={}", id, jwt.getSubject());
-        Optional<TenantReadModel> found = service.findById(id);
+        Optional<TenantReadModel> found = tenantLookup.lookupById(id);
         return found.map(ResponseEntity::ok)
                     .orElseGet(() -> ResponseEntity.notFound().build());
     }

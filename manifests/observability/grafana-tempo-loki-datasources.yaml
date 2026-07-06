@@ -1,0 +1,37 @@
+# Provisions Tempo + Loki in Grafana (sidecar label grafana_datasource=1).
+# Apply: kubectl apply -f manifests/observability/grafana-tempo-loki-datasources.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-tempo-loki-datasources
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+    app.kubernetes.io/part-of: multistate
+data:
+  tempo-loki-datasources.yaml: |-
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        uid: loki
+        url: http://loki.observability.svc.cluster.local:3100
+        access: proxy
+        isDefault: false
+        jsonData:
+          maxLines: 1000
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        url: http://tempo.observability.svc.cluster.local:3200
+        access: proxy
+        isDefault: false
+        jsonData:
+          httpMethod: GET
+          tracesToLogs:
+            datasourceUid: loki
+            filterByTraceID: true
+            filterBySpanID: false
+            tags:
+              - key: correlationId
+                value: correlationId

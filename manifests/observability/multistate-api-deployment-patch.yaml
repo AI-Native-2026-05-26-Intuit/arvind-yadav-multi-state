@@ -1,0 +1,103 @@
+# manifests/observability/multistate-api-deployment-patch.yaml
+#
+# Full Deployment manifest: base workload (manifests/10-multistate-api.deployment.yaml)
+# plus OTel Java agent baked into the image (W5 D5 Task 3) and trace-export env.
+#
+# Apply:
+#   kubectl apply -f manifests/observability/multistate-api-deployment-patch.yaml
+#   kubectl -n multistate-dev rollout status deployment/multistate-api
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multistate-api
+  namespace: multistate-dev
+  labels:
+    app.kubernetes.io/name: multistate-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: multistate
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multistate-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: multistate-api
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: multistate
+      annotations:
+        checksum/config: "replace-at-apply-time"
+        checksum/secret: "replace-at-apply-time"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      containers:
+        - name: multistate-api
+          image: uptimecrew/multistate-api:0.1.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: multistate-api-config
+            - secretRef:
+                name: multistate-api-secrets
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:/home/nonroot/otel/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+            - name: OTEL_SERVICE_NAME
+              value: multistate-api
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector.monitoring.svc.cluster.local:4317
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_traceidratio
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "0.1"
+            - name: OTEL_METRICS_EXPORTER
+              value: none
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+            - name: SPRING_PROFILES_ACTIVE
+              value: k8s
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            initialDelaySeconds: 0
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+            initialDelaySeconds: 0

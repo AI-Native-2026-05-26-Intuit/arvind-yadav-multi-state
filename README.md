@@ -120,6 +120,35 @@ The domain core is now packaged as a **Spring Boot 4** application: the service 
 - **Task 4 — CI + smoke + teardown.** [scripts/sam-smoke.sh](scripts/sam-smoke.sh) reads `HttpApiUrl` from CloudFormation, hits a known-good tenant path, asserts `/tenants/` returns 404 from API Gateway routing, and confirms a recent `REPORT` line in CloudWatch Logs. [.github/workflows/serverless.yml](.github/workflows/serverless.yml) on PR: `sam validate --lint` → `./gradlew tenantLookupJar test` (lambda package) → `sam build --use-container` → `sam local invoke` against DynamoDB Local. On merge to `main`: OIDC federated auth via `aws-actions/configure-aws-credentials@v4` + `vars.AWS_DEPLOY_ROLE_ARN` / `vars.AWS_REGION` (no `AWS_ACCESS_KEY_ID` secrets), deploy to `multistate-lambda-sandbox`, run `./scripts/sam-smoke.sh`, upload `sam-diagnostics` (stack events + lambda logs) on failure. Teardown: `sam delete --stack-name multistate-lambda-dev` and `sam delete --stack-name multistate-lambda-sandbox` remove the DynamoDB table, HttpApi, Function, LogGroup, alarm, and IAM role in one shot.
 - **Deviation — Gradle not Maven.** The course appendix references `mvn test` and `pom.xml`; this repo stays Gradle-only. Substitute `./gradlew tenantLookupJar test --tests 'com.uptimecrew.multi_state.lambda.*'` and wire `build.gradle` / `Makefile` in the serverless workflow path filters. Rancher Desktop users: `export DOCKER_HOST=unix://$HOME/.rd/docker.sock` before `sam build --use-container` or `sam local invoke`.
 
+**Week 5 Day 5:** wired the in-cluster PLG-T stack (Prometheus, Loki, Tempo, Grafana) around the W5 D3 `multistate-api` Deployment — RED metrics, structured JSON logs, distributed traces, exemplar pivots, a Sloth-generated latency SLO, and CI gates that fail on rule drift or a broken metric→log→trace round trip.
+
+- **Task 1 — Prometheus metrics + RED dashboard.** Added `micrometer-registry-prometheus` and exposed `/actuator/prometheus` (permitted in [SecurityConfig](src/main/java/com/uptimecrew/multistate/security/SecurityConfig.java)). [TenantLookupService](src/main/java/com/uptimecrew/multistate/service/TenantLookupService.java) registers pre-built Micrometer instruments in its constructor — `multistate_nexus_evaluations_total` (Counter, tagged `tenant_type` + `outcome`) and `multistate_nexus_evaluations` (Timer with histogram) — never `Counter.builder(...).register(...)` on the hot path. [application.yml](src/main/resources/application.yml) sets `spring.application.name: multistate-api`, exposes `health,prometheus,info`, enables percentile histograms + SLO buckets on `http.server.requests`, and tags all meters with `app: multistate-api`. [manifests/observability/multistate-api-servicemonitor.yaml](manifests/observability/multistate-api-servicemonitor.yaml) tells the Prometheus Operator to scrape `:8080/actuator/prometheus` every 15s (`release: kube-prometheus-stack` label is mandatory). The RED dashboard lives at [.grafana/dashboards/multistate-api-red.json](.grafana/dashboards/multistate-api-red.json) (`uid: multistate-red-v1`, schemaVersion 39, four panels: Rate / Errors / Duration p50–p99 / In-Flight) and ships to Grafana via [manifests/observability/multistate-api-dashboard-configmap.yaml](manifests/observability/multistate-api-dashboard-configmap.yaml) (`grafana_dashboard: "1"`, `allowUiUpdates: false`).
+- **Task 2 — structured JSON logs for Loki.** [logback-spring.xml](src/main/resources/logback-spring.xml) uses a human-readable pattern locally and switches to `LogstashEncoder` on the `k8s`/`prod` profiles, surfacing `trace_id`, `span_id`, and `correlationId` from MDC as top-level JSON fields plus `customFields: {"app":"multistate-api","env":"k8s"}`. [CorrelationIdFilter](src/main/java/com/uptimecrew/multistate/web/CorrelationIdFilter.java) reads `x-correlation-id` (or generates a UUID), stores it in MDC, and echoes it on the response. [LABELS.md](manifests/observability/LABELS.md) documents the four permitted Loki labels (`app`, `env`, `level`, `pod`) and the three forbidden high-cardinality identifiers that belong in the log body only (`tenantId`, `correlationId`, user id). Grafana Explore query: `{app="multistate-api"} |= "lookup"`.
+- **Task 3 — OTel Java agent + exemplars + trace pivots.** [manifests/observability/multistate-api-deployment-patch.yaml](manifests/observability/multistate-api-deployment-patch.yaml) is a full Deployment manifest with the OTel Java agent **baked into the Docker image** at `/home/nonroot/otel/opentelemetry-javaagent.jar` (v2.26.1 via [docker/otel/fetch-agent.sh](docker/otel/fetch-agent.sh) + [Dockerfile](Dockerfile) / [Dockerfile.prebuilt](Dockerfile.prebuilt)) — not an init-container download (avoids in-cluster TLS pull failures on locked-down k3d networks). The main container sets `JAVA_TOOL_OPTIONS=-javaagent:…`, `OTEL_SERVICE_NAME=multistate-api`, OTLP export to `otel-collector.monitoring.svc.cluster.local:4317` (gRPC), `parentbased_traceidratio` at 10%, and disables OTel metrics/logs export (Micrometer + Logback own those paths). `@WithSpan` on `TenantLookupService.loadTenantFromStores(...)` produces a child span visible in Tempo. `management.prometheus.metrics.export.exemplars.enabled: true` plus `exemplar: true` on the dashboard's p95/p99 Duration queries enable diamond markers that pivot to Tempo (and from there to Loki via `trace_id`). [CorrelationIdFilter](src/main/java/com/uptimecrew/multistate/web/CorrelationIdFilter.java) also sets `correlationId` on the active span for Tempo search.
+- **Task 4 — Sloth SLO + alert routing + apply/smoke scripts + CI.** [slo/multistate-api.sloth.yaml](slo/multistate-api.sloth.yaml) defines `multistate-api-latency` (99% objective, GET `/tenants/{tenantId}` under 500ms, non-5xx). Regenerate with `sloth generate -i slo/multistate-api.sloth.yaml -o manifests/observability/multistate-api-prometheusrule.yaml` (Sloth v0.11.0); commit the output byte-stable — CI re-runs Sloth and fails on drift. Validate with `docker run --rm --entrypoint promtool -v $PWD:/work -w /work prom/prometheus:v2.54.0 check rules manifests/observability/multistate-api-prometheusrule.yaml`. [manifests/observability/multistate-api-alertmanagerconfig.yaml](manifests/observability/multistate-api-alertmanagerconfig.yaml) routes `team=multistate` alerts to a Slack placeholder (`https://hooks.slack.com/services/PLACEHOLDER`) and a PagerDuty placeholder key. [scripts/observability-plg-install.sh](scripts/observability-plg-install.sh) installs kube-prometheus-stack (`monitoring`), Loki + Tempo (`observability`), and an OTel collector (`monitoring`). [scripts/observability-apply.sh](scripts/observability-apply.sh) applies the full observability layer (Sloth drift gate → promtool → dashboard ConfigMap → ServiceMonitor → Deployment patch → wrapped PrometheusRule → AlertmanagerConfig). [scripts/observability-smoke.sh](scripts/observability-smoke.sh) sends one request with a known correlation id and asserts metric (`multistate_nexus_evaluations_total` via Prometheus or actuator fallback), log line (Loki or pod-log fallback), and trace (Tempo search on `span.correlationId`). [.github/workflows/observability.yml](.github/workflows/observability.yml) gates PRs on promtool, Sloth drift, dashboard `jq` sanity, and a k3d smoke run (`OBS_SMOKE_REQUIRE_PLG=false` in CI when the PLG stack is absent).
+- **SLO / smoke path.** [TenantObservabilityController](src/main/java/com/uptimecrew/multistate/api/TenantObservabilityController.java) exposes unauthenticated `GET /tenants/{tenantId}` so Micrometer's `uri` tag matches the Sloth spec and smoke scripts can hit the service without a JWT. The k8s profile adds a deliberate slow path: tenant ids prefixed `tnt_synth_slow` sleep 700ms inside `loadTenantFromStores` to breach the 500ms SLI and fire `multistate-apiLatencySLOBurn` in Alertmanager under sustained `hey` traffic.
+
+```bash
+# Static gates (same as CI)
+docker run --rm -v "$PWD:/work" -w /work ghcr.io/slok/sloth:v0.11.0 \
+  generate -i slo/multistate-api.sloth.yaml \
+  -o manifests/observability/multistate-api-prometheusrule.yaml
+git diff --exit-code -- manifests/observability/multistate-api-prometheusrule.yaml
+
+docker run --rm --entrypoint promtool -v "$PWD:/work" -w /work prom/prometheus:v2.54.0 \
+  check rules manifests/observability/multistate-api-prometheusrule.yaml
+
+# Cluster (requires PLG stack — install first)
+./scripts/observability-plg-install.sh
+./scripts/observability-apply.sh
+OBS_SMOKE_REQUIRE_PLG=true ./scripts/observability-smoke.sh
+
+# Trigger SLO burn (slow synthetic tenant)
+kubectl run -it --rm slow --image=williamyeh/hey -- \
+  -z 60s -c 20 -t 5 \
+  http://multistate-api.multistate-dev.svc.cluster.local:8080/tenants/tnt_synth_slow001
+```
+
 ## Build & test
 
 ```bash
@@ -161,19 +190,21 @@ The project is bootstrapped as a Spring Boot 4 application (Boot + dependency-ma
 
 | Profile | Use | Notable settings |
 | --- | --- | --- |
-| `local` (default) | local dev | Postgres `localhost:5432`, HikariCP pool size 5, password from `${DB_PASSWORD:devpass}`, `com.uptimecrew.multistate` log level `DEBUG`. |
+| `local` (default) | local dev | Postgres `localhost:5433`, HikariCP pool size 5, password from `${DB_PASSWORD:devpass}`, `com.uptimecrew.multistate` log level `DEBUG`. |
 | `test` | integration tests | Placeholder datasource (Testcontainers injects the real URL at runtime); log level `INFO`. Activate with `@ActiveProfiles("test")`. |
+| `k8s` | in-cluster | JSON logs via LogstashEncoder; optional 700ms slow-lookup delay for `tnt_synth_slow*` tenant ids (SLO burn testing). Combined with `SPRING_PROFILES_ACTIVE=k8s` in the Deployment patch. |
 
 ### Actuator
 
-`spring-boot-starter-actuator` exposes management endpoints over HTTP (embedded Tomcat via `spring-boot-starter-web`). The `local` profile exposes `health` and `info`; the `test` profile exposes only `health`. Health detail is shown `when-authorized`.
+`spring-boot-starter-actuator` exposes management endpoints over HTTP (embedded Tomcat via `spring-boot-starter-web`). The `local` profile exposes `health`, `info`, and `prometheus`; the `test` profile exposes only `health`. Health detail is shown `when-authorized`. Prometheus exemplars are enabled (`management.prometheus.metrics.export.exemplars.enabled: true`) so histogram buckets carry trace ids for Grafana→Tempo pivot.
 
 ## HTTP API
 
-All `/api/v1/**` routes require a valid Bearer JWT and authority `SCOPE_tenants.read` + role `TENANT_READER`. `/actuator/health`, `/v3/api-docs/**`, `/swagger-ui/**`, `/graphql`, `/graphiql/**`, and `/graphql/schema` are unauthenticated. The session is stateless; CSRF is disabled because there is no cookie-based auth surface.
+All `/api/v1/**` routes require a valid Bearer JWT and authority `SCOPE_tenants.read` + role `TENANT_READER`. `/actuator/health`, `/actuator/prometheus`, `/actuator/info`, `/v3/api-docs/**`, `/swagger-ui/**`, `/graphql`, `/graphiql/**`, `/graphql/schema`, and `GET /tenants/**` are unauthenticated. The session is stateless; CSRF is disabled because there is no cookie-based auth surface.
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
+| `GET` | `/tenants/{tenantId}` | none | W5 D5 observability/SLO path. Delegates to [TenantLookupService](src/main/java/com/uptimecrew/multistate/service/TenantLookupService.java); Micrometer `uri=/tenants/{tenantId}`. Used by smoke scripts and Sloth latency SLO. |
 | `GET` | `/api/v1/tenants/{id}` | JWT + `SCOPE_tenants.read` + `ROLE_TENANT_READER` | Returns the [TenantReadModel](src/main/java/com/uptimecrew/multistate/readmodel/TenantReadModel.java) from the Redis-cached Mongo read side. 404 if not found. |
 | `POST` | `/api/v1/tenants/{id}/summary` | Same as above + `Idempotency-Key` UUID header | Stubbed LLM-style summary. Body includes `displayName` resolved from the identity service (degraded value if the breaker is OPEN). Rate-limited to **10 requests / minute per JWT subject**; over-limit returns `429` with `Retry-After: 60`. `400` on missing/non-UUID header; `409` on concurrent retry with the same key while the original is still in flight. |
 | `POST` | `/graphql` | none (local) | GraphQL endpoint. Queries: `tenant(id)`, `latestTenants(limit: Int = 10)`. Mutation: `summarizeTenant(id)` (Spring AI Anthropic → JSON-Schema-validated `TenantSummary`). `Tenant.lines` is resolved via `@BatchMapping` (single call per generation). |
@@ -260,6 +291,8 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 | Scope | Library |
 | --- | --- |
 | `implementation` | `org.springframework.boot:spring-boot-starter`, `spring-boot-starter-web` (embedded Tomcat for Actuator), `spring-boot-starter-actuator`, `spring-boot-starter-security`, `spring-boot-starter-oauth2-resource-server` |
+| `runtimeOnly` | `io.micrometer:micrometer-registry-prometheus` (RED metrics + exemplars), `net.logstash.logback:logstash-logback-encoder:7.4` (JSON logs on k8s profile) |
+| `implementation` | `io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.28.1`, `opentelemetry-instrumentation-annotations:2.28.1` (`@WithSpan` + trace propagation) |
 | `implementation` | `com.bucket4j:bucket4j-core`, `com.bucket4j:bucket4j-redis` (per-subject token-bucket rate limiting) |
 | `implementation` | `org.springframework.boot:spring-boot-starter-data-redis` (also backs the W3 D2 idempotency store) |
 | `implementation` | `org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0` (OpenAPI 3.1 + Swagger UI) |
@@ -288,7 +321,9 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 ```
 src/main/java/com/uptimecrew/multistate/
     Application.java  # Spring Boot entry point (@SpringBootApplication, @EnableScheduling)
-    api/              # @RestController endpoints (TenantController) + IdempotencyService
+    api/              # @RestController endpoints (TenantController, TenantObservabilityController)
+                      # + IdempotencyService
+    web/              # CorrelationIdFilter (x-correlation-id → MDC + span attribute)
     clients/          # declarative identity HTTP client + IdentityService (breaker wrapper)
     config/           # OpenApiConfig (OpenAPI 3.1 bean + bearer-jwt scheme)
     consumer/         # @KafkaListener (re-projection) + DLT error handler + event record
@@ -308,11 +343,29 @@ src/main/java/com/uptimecrew/multi_state/
     lambda/           # W5 D4 serverless tenant lookup (separate from Spring Boot app)
                       # TenantLookupHandler, TenantRecord, EmfPublisher
 src/main/resources/
-    application.yml   # local + test profiles, datasource, Actuator, logging,
+    application.yml   # local + test + k8s profiles, datasource, Actuator (prometheus
+                      # + exemplars), management.metrics tags, otel.* block,
                       # springdoc paths, identity.base-url, resilience4j breaker,
                       # kafka producer/consumer, spring.ai.mcp.server (SYNC + SSE),
                       # spring.graphql.{graphiql, schema.printer},
                       # spring.ai.anthropic (api-key, model, max-tokens)
+    logback-spring.xml  # human-readable locally; Logstash JSON on k8s/prod
+slo/
+    multistate-api.sloth.yaml   # human-authored SLO spec (Sloth v1)
+manifests/observability/
+    multistate-api-servicemonitor.yaml
+    multistate-api-deployment-patch.yaml   # OTel agent + k8s profile
+    multistate-api-prometheusrule.yaml     # Sloth-generated (do not hand-edit)
+    multistate-api-alertmanagerconfig.yaml
+    multistate-api-dashboard-configmap.yaml
+    LABELS.md                              # Loki label contract
+.grafana/dashboards/
+    multistate-api-red.json                # RED dashboard (uid multistate-red-v1)
+scripts/
+    observability-apply.sh                 # one-shot observability layer apply
+    observability-smoke.sh                 # metric + log + trace round-trip check
+.github/workflows/
+    observability.yml                      # Sloth drift + promtool + k3d smoke
     graphql/
         schema.graphqls               # SDL: Tenant, LineItem, TenantSummary; queries + mutation
     schemas/

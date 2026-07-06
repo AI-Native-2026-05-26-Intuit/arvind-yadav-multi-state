@@ -10,7 +10,7 @@ spring:
     open-in-view: false             # (2) prevent the lazy-load-in-view anti-pattern
     show-sql: false                 # flip to true for local debugging only
   application:
-    name: multistate-service
+    name: multistate-api
   profiles:
     default: local
   datasource:
@@ -143,7 +143,7 @@ spring:
 # under `spring.*` silently disables every setting and falls back to env defaults.
 otel:
   service:
-    name: multistate-service
+    name: multistate-api
   exporter:
     otlp:
       endpoint: http://localhost:4318     # OTLP/HTTP default; matches the Jaeger all-in-one container
@@ -165,10 +165,33 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # Expose ONLY the endpoints Prometheus / probes need.
+        # NEVER include "*" — heapdump + env + threaddump leak secrets.
+        include: health,prometheus,info
   endpoint:
     health:
-      show-details: when-authorized
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 100ms,200ms,300ms,500ms,800ms,1200ms,2000ms
+    tags:
+      app: multistate-api
+  prometheus:
+    metrics:
+      export:
+        exemplars:
+          enabled: true
+  tracing:
+    sampling:
+      probability: 0.1
+
+server:
+  port: 8080
 
 logging:
   level:
@@ -217,3 +240,14 @@ logging:
   level:
     root: INFO
     com.uptimecrew.multistate: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: k8s
+
+multistate:
+  observability:
+    slow-lookup-delay-ms: 700
+    slow-lookup-id-prefix: tnt_synth_slow

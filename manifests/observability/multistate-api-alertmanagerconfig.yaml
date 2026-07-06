@@ -1,0 +1,47 @@
+# manifests/observability/multistate-api-alertmanagerconfig.yaml
+#
+# Routes alerts labelled team=multistate to Slack (ticket) and PagerDuty (page).
+# apiURL / routingKey reference multistate-alert-routing (SecretKeySelector; operator v0.77+).
+# Placeholder values in that secret — real credentials via sealed-secrets (W6 D1).
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: multistate-api-routing
+  namespace: multistate-dev
+  labels:
+    release: kube-prometheus-stack
+    team: multistate
+spec:
+  route:
+    receiver: multistate-slack
+    groupBy:
+      - alertname
+      - slo
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    matchers:
+      - name: team
+        matchType: "="
+        value: multistate
+    routes:
+      - receiver: multistate-pager
+        matchers:
+          - name: severity
+            matchType: "="
+            value: page
+  receivers:
+    - name: multistate-slack
+      slackConfigs:
+        - apiURL:
+            name: multistate-alert-routing
+            key: slack-api-url
+          channel: "#multistate-alerts"
+          title: '{{ .GroupLabels.alertname }}'
+          text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+    - name: multistate-pager
+      pagerdutyConfigs:
+        - routingKey:
+            name: multistate-alert-routing
+            key: pagerduty-routing-key
+          description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'

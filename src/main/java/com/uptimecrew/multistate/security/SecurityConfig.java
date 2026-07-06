@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -43,6 +44,7 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                .requestMatchers("/actuator/prometheus", "/actuator/info").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/v3/api-docs",
                                  "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // MCP SSE transport: /sse opens the event stream, /mcp/message is
@@ -55,6 +57,8 @@ public class SecurityConfig {
                 // The same production caveat as the MCP block applies: in production these
                 // should sit behind a separate filter chain with a real bearer token.
                 .requestMatchers("/graphql", "/graphiql/**", "/graphql/schema").permitAll()
+                // W5 D5: smoke / SLO path — no JWT; metrics uri=/tenants/{tenantId}.
+                .requestMatchers(HttpMethod.GET, "/tenants/**").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll())
             .oauth2ResourceServer(o -> o.jwt(jwt -> jwt
