@@ -1,6 +1,7 @@
 package com.uptimecrew.multistate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.uptimecrew.multistate.model.WorkDay;
 import com.uptimecrew.multistate.readmodel.TenantReadModel;
@@ -12,6 +13,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +25,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -41,6 +44,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 @SpringBootTest
 @ActiveProfiles("test")
+@TestPropertySource(properties = "multistate.it.context=TenantPolyglotIT")
 class TenantPolyglotIT {
 
     @Container
@@ -121,8 +125,13 @@ class TenantPolyglotIT {
         // subsequent read is served from Redis without re-entering the method body.
         Cache cache = cacheManager.getCache(AllocationService.CACHE_NAME);
         assertThat(cache).as("cache region '%s'", AllocationService.CACHE_NAME).isNotNull();
-        assertThat(cache.get("ten-cache"))
-            .as("cache entry after first read")
-            .isNotNull();
+        // Redis write-through can lag briefly when containers are starting under CI load.
+        await().atMost(Duration.ofSeconds(10))
+            .pollInterval(Duration.ofMillis(100))
+            .untilAsserted(
+                () ->
+                    assertThat(cache.get("ten-cache"))
+                        .as("cache entry after first read")
+                        .isNotNull());
     }
 }

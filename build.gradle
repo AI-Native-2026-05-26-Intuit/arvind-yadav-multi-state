@@ -237,6 +237,10 @@ tasks.register('tenantLookupJar', Jar) {
 
 test {
     useJUnitPlatform()
+    maxParallelForks = 1
+    // One cached @SpringBootTest context at a time — avoids stale Testcontainers
+    // Redis ports from a prior IT class polluting the next class's cache writes.
+    systemProperty 'spring.test.context.cache.maxSize', '1'
     environment 'AWS_REGION', 'us-east-1'
     environment 'AWS_DEFAULT_REGION', 'us-east-1'
     environment 'TENANTS_TABLE', 'tenants-dev'

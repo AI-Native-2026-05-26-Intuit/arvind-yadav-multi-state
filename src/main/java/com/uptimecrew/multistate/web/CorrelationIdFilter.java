@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -22,6 +24,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public final class CorrelationIdFilter extends OncePerRequestFilter {
 
+  private static final Logger LOG = LoggerFactory.getLogger(CorrelationIdFilter.class);
+
   static final String HEADER = "x-correlation-id";
   static final String MDC_KEY = "correlationId";
 
@@ -36,6 +40,8 @@ public final class CorrelationIdFilter extends OncePerRequestFilter {
     MDC.put(MDC_KEY, correlationId);
     Span.current().setAttribute("correlationId", correlationId);
     res.setHeader(HEADER, correlationId);
+    // DEBUG so JSON logs carry correlationId without per-request INFO noise in prod.
+    LOG.debug("{} {} correlationId={}", req.getMethod(), req.getRequestURI(), correlationId);
     try {
       chain.doFilter(req, res);
     } finally {
