@@ -1,0 +1,50 @@
+# .github/workflows/ci.yml
+#
+# Repo-layout note: in this repo the multistate-api module IS the root
+# (Gradle build + src/ live at the root; multistate-web/ is the W4 React
+# frontend, with its own CI workflow). The course spec's working-directory
+# and artifact paths use multistate-api/; mapped here to the repo root.
+name: multistate-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# PR force-pushes cancel stale runs; main pushes serialise via the
+# ci-${{ github.ref }} concurrency group below.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Top-level default: read-only. Individual jobs widen as needed.
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9  # v4.8.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Gradle build + tests
+        run: ./gradlew --no-daemon build
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: multistate-api-test-reports
+          path: build/reports/tests/
+          retention-days: 7
