@@ -262,4 +262,6 @@ W4 D5 closes out the W4 capstone with a four-layer testing pyramid and a single 
 
 ## CI
 
-[`/.github/workflows/web-ci.yml`](../.github/workflows/web-ci.yml) runs on PRs that touch `multistate-web/**`: `pnpm install --frozen-lockfile` → install Playwright browsers (`pnpm exec playwright install --with-deps chromium`) → **`pnpm check`** → `pnpm run build`. The pre-W4-D5 `lint`/`typecheck`/`test` triple is now subsumed by `pnpm check`.
+[`/.github/workflows/web-ci.yml`](../.github/workflows/web-ci.yml) runs on PRs that touch `multistate-web/**`: `pnpm install --frozen-lockfile` → install Playwright browsers (`pnpm exec playwright install --with-deps chromium`) → **`pnpm check`** → `pnpm run build`. The pre-W4-D5 `lint`/`typecheck`/`test` triple is now subsumed by `pnpm check`. All GitHub Actions in this repo are SHA-pinned (no floating `@v4` tags); see [`.github/dependabot.yml`](../.github/dependabot.yml) for weekly grouped bumps.
+
+The backend delivery pipeline (`multistate-ci`, ECR push, prod promotion) lives in the repo root — see [`.github/PIPELINE.md`](../.github/PIPELINE.md).
