@@ -173,6 +173,14 @@ jobs:
           kubectl rollout status \
             deploy/multistate-api -n multistate-dev --timeout=8m
 
+      # HPA (minReplicas: 2) fights a single-replica smoke run and scales pods
+      # while ingress-nginx is programming upstreams → transient HTTP 503.
+      - name: Stabilise for Ingress smoke
+        run: |
+          kubectl delete hpa/multistate-api -n multistate-dev --ignore-not-found
+          kubectl scale deploy/multistate-api -n multistate-dev --replicas=1
+          kubectl rollout status deploy/multistate-api -n multistate-dev --timeout=5m
+
       # ----- 5. Smoke ------------------------------------------------
       - name: Smoke test through the Ingress
         run: ./scripts/k8s-smoke.sh
