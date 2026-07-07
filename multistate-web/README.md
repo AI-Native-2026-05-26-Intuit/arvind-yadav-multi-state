@@ -6,7 +6,7 @@ The Spring Boot backend lives at the repo root; see the [root README](../README.
 
 ## Requirements
 
-- Node.js 20+ (CI runs on `node-version: 20`)
+- Node.js 22+ (CI runs on `node-version: 22`; pnpm 11 requires ≥ 22.13)
 - pnpm 11+ (uses the checked-in `pnpm-lock.yaml`; `pnpm-workspace.yaml` whitelists the `esbuild` and `msw` postinstall scripts under pnpm 11's `allowBuilds` gate)
 
 ## Install
