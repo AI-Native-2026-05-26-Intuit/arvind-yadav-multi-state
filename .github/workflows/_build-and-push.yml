@@ -1,0 +1,59 @@
+# Reusable workflow: build + Trivy + push to ECR via OIDC.
+# Called from ci.yml on main; never invoked directly by a UI dispatch.
+#
+# Repo-layout note: in this repo the multistate-api module IS the root
+# (Gradle build + src/ live at the root). The course spec's context path
+# uses ./${{ inputs.app-name }}; mapped here to . (repo root).
+name: _build-and-push
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        required: true
+        type: string
+      image-name:
+        required: true
+        type: string
+      ecr-repo:
+        required: true
+        type: string
+
+# No permissions block here — the caller's job-level block is what gets
+# applied. Documenting that with a comment so the next reader knows.
+
+# Task 3 will use these for OIDC → ECR push.
+env:
+  AWS_REGION:  us-east-1
+  AWS_ACCOUNT: "123456789012"
+
+jobs:
+  build-scan-push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: build-push-${{ inputs.app-name }}
+      cancel-in-progress: false
+    steps:
+      - name: Set up build env (composite)
+        uses: ./.github/actions/setup-build
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db  # v3.6.1
+
+      - name: Build image (load to local docker for scan)
+        id: build-local
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85  # v6.7.0
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: ${{ inputs.image-name }}:${{ github.sha }}
+          build-args: |
+            APP_VERSION=${{ github.sha }}
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      # Task 3: Trivy scan + ECR push (configure-aws-credentials, amazon-ecr-login,
+      # aquasecurity/trivy-action, and a second build-push with push: true).
