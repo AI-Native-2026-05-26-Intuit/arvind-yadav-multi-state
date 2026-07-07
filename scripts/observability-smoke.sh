@@ -90,10 +90,13 @@ assert_pod_log_line() {
   local attempt hits
   for attempt in $(seq 1 6); do
   # Deployment has multiple replicas; aggregate logs from every ready pod.
+  # Use --since (not --tail) so health-probe DEBUG lines cannot push out the
+  # single smoke INFO line when security logging is verbose.
     hits="$(kubectl logs -n "${NS}" -l "app.kubernetes.io/name=${APP}" \
-      --tail=1000 --max-log-requests=10 2>/dev/null \
+      --since=15m --max-log-requests=10 2>/dev/null \
+      | grep -F 'lookup attempted' \
       | grep -F "\"correlationId\":\"${CORR_ID}\"" \
-      | grep -c 'lookup attempted' || true)"
+      | wc -l | tr -d ' ')"
     if [ "${hits}" -ge 1 ]; then
       echo "  found correlationId + lookup attempted in pod logs (attempt ${attempt})"
       return 0
@@ -102,7 +105,10 @@ assert_pod_log_line() {
     sleep 5
   done
   echo "ERROR: no pod log with correlationId=${CORR_ID} and lookup attempted" >&2
-  kubectl logs -n "${NS}" -l "app.kubernetes.io/name=${APP}" --tail=30 --max-log-requests=10 >&2 || true
+  kubectl logs -n "${NS}" -l "app.kubernetes.io/name=${APP}" \
+    --since=15m --tail=50 --max-log-requests=10 2>/dev/null \
+    | grep -E 'lookup attempted|correlationId' >&2 || \
+    kubectl logs -n "${NS}" -l "app.kubernetes.io/name=${APP}" --tail=30 --max-log-requests=10 >&2 || true
   return 1
 }
 
