@@ -271,10 +271,17 @@ jacocoTestReport {
         html.required = true                    // (3) HTML report for humans
         xml.required  = true                    // (4) XML for CI tools
     }
+    // W5 D4 Lambda is packaged separately (see bootJar exclude) and deployed via SAM —
+    // exclude it from the Spring Boot app's coverage denominator.
+    classDirectories.setFrom(
+        files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: ['com/uptimecrew/multi_state/**'])
+        }))
 }
 
 jacocoTestCoverageVerification {
     dependsOn jacocoTestReport
+    classDirectories.setFrom(jacocoTestReport.classDirectories)
     violationRules {
         rule {
             limit {

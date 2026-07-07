@@ -7,7 +7,9 @@ The course spec paths use a `multistate-api/` prefix — mapped to the repo root
 ## On every PR to `main`
 
 1. **`build-test`** (`ci.yml`) runs `./gradlew build` on `ubuntu-24.04` with JDK 21
-   (Temurin) via the `setup-build` composite action.
+   (Temurin) via the `setup-build` composite action. Job timeout is **20 minutes**
+   (raised from the course template's 15 min after W5/W6 Testcontainers + JaCoCo
+   `clean build` routinely exceeded 15 min on `ubuntu-24.04`).
 2. Test reports upload only on failure (`build/reports/tests/`, 7-day retention).
 3. **`call-build-and-push` is skipped** on PRs (`if:` limits it to `push` + `main`).
 4. Branch protection requires the **`build-test`** status check before merge.
@@ -87,3 +89,14 @@ here instead:
 - `sam deploy` for the LLM Lambda — W6 D4.
 - Argo CD GitOps — W6 D2 (manifest-repo commit replaces push-pattern deploy).
 - SLSA provenance / cosign signing — Week 7 security day.
+
+## JaCoCo branch-coverage gate
+
+`./gradlew build` (and therefore `build-test`) runs `jacocoTestCoverageVerification`
+with a **70% project-wide branch** floor (`build.gradle`). The W5 D4 Lambda handler
+(`com.uptimecrew.multi_state.*`) is **excluded** from the JaCoCo denominator — it is
+packaged separately (`tenantLookupJar` / SAM) and already covered by dedicated unit tests
+in `src/test/java/com/uptimecrew/multi_state/lambda/`. W6 D1 added focused unit tests for
+observability paths (`CorrelationIdFilter`, `TenantObservabilityController`,
+`TenantLookupService` branches) so the gate reflects the Spring Boot app surface without
+penalising the out-of-process Lambda artefact.
