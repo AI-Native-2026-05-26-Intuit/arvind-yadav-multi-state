@@ -30,6 +30,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Local composite actions require checkout before GitHub can load action.yml.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
       - name: Set up build env (composite)
         uses: ./.github/actions/setup-build
 
