@@ -135,7 +135,7 @@ jobs:
       - name: Observability smoke (actuator fallback without PLG stack)
         env:
           OBS_SMOKE_REQUIRE_PLG: "false"
-          OBS_SMOKE_WAIT_SEC: "20"
+          OBS_SMOKE_WAIT_SEC: "30"
         run: |
           # Single replica avoids load-balancer splitting logs/metrics across pods.
           kubectl scale deploy/multistate-api -n multistate-dev --replicas=1

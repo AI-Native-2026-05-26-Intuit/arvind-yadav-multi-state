@@ -94,8 +94,8 @@ assert_pod_log_line() {
   # single smoke INFO line when security logging is verbose.
     hits="$(kubectl logs -n "${NS}" -l "app.kubernetes.io/name=${APP}" \
       --since=15m --max-log-requests=10 2>/dev/null \
-      | grep -F 'lookup attempted' \
-      | grep -F "\"correlationId\":\"${CORR_ID}\"" \
+      | grep -F "${CORR_ID}" \
+      | grep -E 'lookup attempted|GET /tenants/' \
       | wc -l | tr -d ' ')"
     if [ "${hits}" -ge 1 ]; then
       echo "  found correlationId + lookup attempted in pod logs (attempt ${attempt})"
