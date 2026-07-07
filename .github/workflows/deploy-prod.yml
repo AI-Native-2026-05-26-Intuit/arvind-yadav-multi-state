@@ -1,0 +1,55 @@
+# Promotes a SHA-tagged image already in ECR to the prod environment.
+# Triggered manually via workflow_dispatch with the image SHA as input.
+# The dev environment auto-deploys on merge to main (via _build-and-push.yml);
+# prod stays human-gated by required reviewers on the 'prod' environment.
+name: deploy-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      image-sha:
+        description: Image SHA tag already pushed to ECR (40-hex git SHA).
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Prod deploys MUST queue, never race. Two reviewers approving back-to-back
+# on different SHAs would otherwise apply both manifests in undefined order.
+concurrency:
+  group: deploy-prod-multistate-api
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Validate input SHA is a 40-char hex
+        run: |
+          if [[ ! "${{ inputs.image-sha }}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::image-sha must be a 40-char git SHA" ; exit 1
+          fi
+
+      - name: Configure AWS credentials via OIDC (prod role)
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+        with:
+          role-to-assume: arn:aws:iam::279566174801:role/multistate-api-prod-deploy
+          aws-region:     us-east-1
+          role-session-name: gh-prod-${{ github.run_id }}
+
+      - name: Confirm image exists in ECR
+        run: |
+          aws ecr describe-images \
+            --repository-name uptimecrew/multistate-api \
+            --image-ids imageTag=${{ inputs.image-sha }}
+
+      # W6 D3 fills in the kubectl rollout + sam deploy steps; today
+      # we stop here with the role assumed and the image confirmed.
+      - name: Placeholder for kubectl rollout
+        run: echo "Would apply k8s manifests with image=${{ inputs.image-sha }}"

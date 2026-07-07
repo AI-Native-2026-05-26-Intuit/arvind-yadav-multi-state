@@ -26,15 +26,15 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9  # v4.8.0
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
 
-      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/setup-sam@f84ec7d548307efafe33230528756de3c5841a17  # v2
         with:
           use-installer: true
 
@@ -59,7 +59,7 @@ jobs:
           docker rm -f dynamodb-local 2>/dev/null || true
           docker run -d --name dynamodb-local --network sam-ci \
             -p 8000:8000 amazon/dynamodb-local
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if aws dynamodb list-tables \
                 --endpoint-url http://localhost:8000 \
                 --region us-east-1 >/dev/null 2>&1; then
@@ -105,7 +105,7 @@ jobs:
           grep -q 'tnt_synth_001' /tmp/local-invoke.json
 
       - name: Upload sam build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: sam-build
           path: .aws-sam
@@ -118,19 +118,19 @@ jobs:
     environment: sandbox
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: sam-build
           path: .aws-sam
 
-      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/setup-sam@f84ec7d548307efafe33230528756de3c5841a17  # v2
         with:
           use-installer: true
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -171,7 +171,7 @@ jobs:
               --since 10m --region "${AWS_REGION}" \
               > /tmp/lambda-logs.txt || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: failure()
         with:
           name: sam-diagnostics

@@ -39,7 +39,7 @@ jobs:
         uses: ./.github/actions/setup-build
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f  # v4.0.2
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/multistate-api-build-push
           aws-region:     ${{ env.AWS_REGION }}
@@ -47,7 +47,7 @@ jobs:
 
       - name: Log in to ECR
         id: ecr-login
-        uses: aws-actions/amazon-ecr-login@4625ce35226a7557230889aae2f52eb50ec3dcda  # v2.0.1
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db  # v3.6.1
@@ -67,7 +67,7 @@ jobs:
           cache-to:   type=gha,mode=max
 
       - name: Trivy scan (fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@5681af892cd0f4997658e2bacc62bd0a894cf564  # 0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ inputs.image-name }}:${{ github.sha }}
           severity:  HIGH,CRITICAL
