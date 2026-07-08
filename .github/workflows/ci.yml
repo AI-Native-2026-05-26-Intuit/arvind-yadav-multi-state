@@ -1,0 +1,60 @@
+# .github/workflows/ci.yml
+#
+# Repo-layout note: in this repo the multistate-api module IS the root
+# (Gradle build + src/ live at the root; multistate-web/ is the W4 React
+# frontend, with its own CI workflow). The course spec's working-directory
+# and artifact paths use multistate-api/; mapped here to the repo root.
+name: multistate-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# PR force-pushes cancel stale runs; main pushes serialise via the
+# ci-${{ github.ref }} concurrency group below.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Top-level default: read-only. Individual jobs widen as needed.
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      # Local composite actions require checkout before GitHub can load action.yml.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Set up build env (composite)
+        uses: ./.github/actions/setup-build
+
+      - name: Gradle build + tests
+        run: ./gradlew --no-daemon clean build
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: multistate-api-test-reports
+          path: build/reports/tests/
+          retention-days: 7
+
+  call-build-and-push:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: build-test
+    uses: ./.github/workflows/_build-and-push.yml
+    with:
+      app-name:   multistate-api
+      image-name: uptimecrew/multistate-api
+      ecr-repo:   uptimecrew/multistate-api
+    permissions:
+      contents: read
+      id-token:  write     # required to mint the OIDC token for AWS STS (Task 3)

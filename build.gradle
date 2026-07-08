@@ -237,6 +237,10 @@ tasks.register('tenantLookupJar', Jar) {
 
 test {
     useJUnitPlatform()
+    maxParallelForks = 1
+    // One cached @SpringBootTest context at a time — avoids stale Testcontainers
+    // Redis ports from a prior IT class polluting the next class's cache writes.
+    systemProperty 'spring.test.context.cache.maxSize', '1'
     environment 'AWS_REGION', 'us-east-1'
     environment 'AWS_DEFAULT_REGION', 'us-east-1'
     environment 'TENANTS_TABLE', 'tenants-dev'
@@ -267,9 +271,17 @@ jacocoTestReport {
         html.required = true                    // (3) HTML report for humans
         xml.required  = true                    // (4) XML for CI tools
     }
+    // W5 D4 Lambda is packaged separately (see bootJar exclude) and deployed via SAM —
+    // exclude it from the Spring Boot app's coverage denominator.
+    classDirectories.setFrom(
+        files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: ['com/uptimecrew/multi_state/**'])
+        }))
 }
 
 jacocoTestCoverageVerification {
+    dependsOn jacocoTestReport
+    classDirectories.setFrom(jacocoTestReport.classDirectories)
     violationRules {
         rule {
             limit {

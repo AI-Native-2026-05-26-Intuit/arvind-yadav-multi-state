@@ -39,7 +39,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
     properties = {
       "spring.autoconfigure.exclude=",
       "management.endpoints.web.exposure.include=health,prometheus,info",
-      "otel.sdk.disabled=true"
+      "otel.sdk.disabled=true",
+      "logging.level.com.uptimecrew.multistate.web.CorrelationIdFilter=DEBUG"
     })
 class K8sJsonLoggingIT {
 

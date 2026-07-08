@@ -251,3 +251,9 @@ multistate:
   observability:
     slow-lookup-delay-ms: 700
     slow-lookup-id-prefix: tnt_synth_slow
+
+logging:
+  level:
+    root: INFO
+    com.uptimecrew.multistate: INFO
+    org.springframework.security: WARN
