@@ -1,0 +1,6 @@
+# cfn-lint configuration for the multistate CFN templates.
+# W3691: RDS engine version 16.3 flagged as deprecated; instance is
+#        already live at this version -- suppressed to avoid
+#        unintended in-place engine upgrades via template change.
+ignore_checks:
+  - W3691

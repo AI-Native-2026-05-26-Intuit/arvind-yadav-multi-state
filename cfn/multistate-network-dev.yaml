@@ -19,12 +19,6 @@ Parameters:
     Description: VPC CIDR. Must not overlap any peered network.
     AllowedPattern: "^10\\.\\d{1,3}\\.0\\.0/16$"
 
-Mappings:
-  EnvToReplicas:
-    dev:     {AppMin: "1", AppDesired: "1", AppMax: "2"}
-    staging: {AppMin: "2", AppDesired: "2", AppMax: "4"}
-    prod:    {AppMin: "3", AppDesired: "3", AppMax: "6"}
-
 Conditions:
   IsDev: !Equals [!Ref EnvName, dev]
   IsHA:  !Not    [!Equals [!Ref EnvName, dev]]

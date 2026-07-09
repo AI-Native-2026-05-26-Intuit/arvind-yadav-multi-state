@@ -101,10 +101,8 @@ Resources:
       MultiAZ:               false
       BackupRetentionPeriod: 7
       DeletionProtection:    true
-      MasterUsername:
-        "Fn::Sub": "{{resolve:secretsmanager:multistate/dev/db-master:SecretString:username}}"
-      MasterUserPassword:
-        "Fn::Sub": "{{resolve:secretsmanager:multistate/dev/db-master:SecretString:password}}"
+      MasterUsername: "{{resolve:secretsmanager:multistate/dev/db-master:SecretString:username}}"
+      MasterUserPassword: "{{resolve:secretsmanager:multistate/dev/db-master:SecretString:password}}"
       Tags:
         - {Key: Env,         Value: !Ref EnvName}
         - {Key: Project,     Value: multistate}
