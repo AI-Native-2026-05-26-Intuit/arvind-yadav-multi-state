@@ -1,0 +1,61 @@
+# .github/workflows/_bump-config.yml
+# Opens a PR against arvind-yadav-multistate-config bumping the dev overlay image tag.
+name: _bump-config
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        required: true
+        type: string
+      image-sha:
+        required: true
+        type: string
+    secrets:
+      GITOPS_REPO_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    name: Bump gitops dev overlay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out gitops repo
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
+        with:
+          repository: AI-Native-2026-05-26-Intuit/arvind-yadav-multistate-config
+          token: ${{ secrets.GITOPS_REPO_TOKEN }}
+          path:  gitops
+
+      - name: Set up Kustomize
+        uses: imranismail/setup-kustomize@2ba527d4d055ab63514ba50a99456fc35684947f  # v2.1.0
+
+      - name: Rewrite image tag on dev overlay
+        working-directory: gitops/overlays/dev
+        run: |
+          kustomize edit set image \
+            ${{ inputs.image-name }}=${{ inputs.image-name }}:${{ inputs.image-sha }}
+          kustomize build . > /tmp/rendered.yaml
+          test -s /tmp/rendered.yaml
+
+      - name: Open PR against gitops repo
+        working-directory: gitops
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_REPO_TOKEN }}
+        run: |
+          BR="bump-${{ inputs.image-sha }}"
+          git config user.name  "uptimecrew-ci"
+          git config user.email "ci@uptimecrew.example.internal"
+          git checkout -b "$BR"
+          git add overlays/dev/kustomization.yaml
+          git commit -m "bump(dev): ${{ inputs.image-name }} -> ${{ inputs.image-sha }}"
+          git push -u origin "$BR"
+          gh pr create \
+            --base main \
+            --head "$BR" \
+            --title "bump(dev): ${{ inputs.image-name }} -> ${{ inputs.image-sha }}" \
+            --body  "Automated bump from upstream CI run ${{ github.run_id }}."

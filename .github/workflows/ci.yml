@@ -58,3 +58,15 @@ jobs:
     permissions:
       contents: read
       id-token:  write     # required to mint the OIDC token for AWS STS (Task 3)
+
+  call-bump-config:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: call-build-and-push
+    uses: ./.github/workflows/_bump-config.yml
+    with:
+      image-name: uptimecrew/multistate-api
+      image-sha:  ${{ github.sha }}
+    secrets:
+      GITOPS_REPO_TOKEN: ${{ secrets.GITOPS_REPO_TOKEN }}
+    permissions:
+      contents: read
