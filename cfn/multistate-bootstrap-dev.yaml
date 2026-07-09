@@ -45,6 +45,11 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: "Access logging on the bootstrap bucket itself creates a circular dependency; dev environment."
     Properties:
       BucketName: !Sub "uptimecrew-multistate-bootstrap-${EnvName}-${AWS::AccountId}"
       VersioningConfiguration:
@@ -96,6 +101,11 @@ Resources:
 
   CfnDeployRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Role name is pinned in the OIDC trust policy sub claim of the GitHub OIDC provider; must be explicit."
     Properties:
       RoleName: multistate-api-cfn-deploy
       AssumeRolePolicyDocument:

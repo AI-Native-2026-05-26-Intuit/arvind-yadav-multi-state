@@ -26,6 +26,11 @@ Conditions:
 Resources:
   Vpc:
     Type: AWS::EC2::VPC
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W60
+            reason: "VPC flow logs are a cost item deferred to staging/prod; dev environment."
     Properties:
       CidrBlock:           !Ref VpcCidr
       EnableDnsSupport:    true
@@ -57,6 +62,11 @@ Resources:
 
   PublicSubnetA:
     Type: AWS::EC2::Subnet
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "Public subnets intentionally assign public IPs; NAT GWs and ALBs require this."
     Properties:
       VpcId:               !Ref Vpc
       AvailabilityZone:    !Select [0, !GetAZs ""]
@@ -71,6 +81,11 @@ Resources:
         - {Key: team,        Value: multistate}
   PublicSubnetB:
     Type: AWS::EC2::Subnet
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "Public subnets intentionally assign public IPs; NAT GWs and ALBs require this."
     Properties:
       VpcId:               !Ref Vpc
       AvailabilityZone:    !Select [1, !GetAZs ""]
@@ -85,6 +100,11 @@ Resources:
         - {Key: team,        Value: multistate}
   PublicSubnetC:
     Type: AWS::EC2::Subnet
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "Public subnets intentionally assign public IPs; NAT GWs and ALBs require this."
     Properties:
       VpcId:               !Ref Vpc
       AvailabilityZone:    !Select [2, !GetAZs ""]
@@ -316,6 +336,13 @@ Resources:
 
   MultistateAppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit group name required for cross-stack reference and operational clarity."
+          - id: W5
+            reason: "Egress is explicitly port 443 only (ECR, STS, Secrets Manager). cfn-nag W5 fires on any 0.0.0.0/0 egress regardless of port restriction."
     Properties:
       GroupName:        !Sub "multistate-${EnvName}-app-sg"
       GroupDescription: App SG; ingress 8080 from VPC only; egress 443 only.

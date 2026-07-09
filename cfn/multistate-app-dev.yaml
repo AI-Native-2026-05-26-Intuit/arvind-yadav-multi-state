@@ -29,6 +29,11 @@ Resources:
     Type: AWS::SecretsManager::Secret
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W77
+            reason: "Using aws/secretsmanager managed key is sufficient for dev; cross-account sharing not required."
     Properties:
       Name:        multistate/dev/db-master
       Description: !Sub "multistate DB master credentials, ${EnvName}."
@@ -75,6 +80,12 @@ Resources:
             !ImportValue
               "Fn::Sub": "${NetworkStackName}-AppSgId"
           Description: Postgres from app SG only.
+      # Explicit egress: RDS requires no outbound; SGs are stateful so
+      # response traffic to established inbound connections is allowed.
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp:     "127.0.0.1/32"
+          Description: DB tier has no required outbound; loopback-only makes deny-all explicit.
       Tags:
         - {Key: Name,        Value: !Sub "multistate-${EnvName}-db-sg"}
         - {Key: Env,         Value: !Ref EnvName}
@@ -87,6 +98,11 @@ Resources:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit identifier required for Secrets Manager SecretTargetAttachment and operational clarity."
     Properties:
       DBInstanceIdentifier:  !Sub "multistate-${EnvName}"
       Engine:                postgres
