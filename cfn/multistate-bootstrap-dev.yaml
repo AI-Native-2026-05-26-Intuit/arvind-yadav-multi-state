@@ -38,7 +38,11 @@ Parameters:
   GitHubRepo:
     Type: String
     Default: arvind-yadav-multi-state
-    Description: Repo that runs cfn-validate and future CFN deploy workflows.
+    Description: App repo that runs cfn-validate and future CFN deploy workflows.
+  GitHubConfigRepo:
+    Type: String
+    Default: arvind-yadav-multistate-config
+    Description: GitOps config repo (gitops deployments from main).
 
 Resources:
   BootstrapBucket:
@@ -120,8 +124,12 @@ Resources:
                 "token.actions.githubusercontent.com:aud": sts.amazonaws.com
               StringLike:
                 "token.actions.githubusercontent.com:sub":
+                  # App repo — cfn-validate CI runs here on every PR + main push
                   - !Sub "repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/main"
                   - !Sub "repo:${GitHubOrg}/${GitHubRepo}:pull_request"
+                  # GitOps config repo — future stack-deploy workflows run here
+                  - !Sub "repo:${GitHubOrg}/${GitHubConfigRepo}:ref:refs/heads/main"
+                  - !Sub "repo:${GitHubOrg}/${GitHubConfigRepo}:pull_request"
       Policies:
         - PolicyName: cfn-deploy-narrow
           PolicyDocument:
