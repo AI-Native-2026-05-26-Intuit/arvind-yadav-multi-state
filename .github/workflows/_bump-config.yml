@@ -11,6 +11,9 @@ on:
       image-sha:
         required: true
         type: string
+    secrets:
+      GITOPS_REPO_TOKEN:
+        required: true
 
 permissions:
   contents: read

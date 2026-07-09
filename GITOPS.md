@@ -56,6 +56,28 @@ ApplicationSet, and AppProject — prevents orphaned workloads on CR delete.
 **Rejected:** Scaffolded Argo Rollout CR before W6 D5 — Rollouts controller not
 installed; kept Deployment until canary lesson lands.
 
+## Delivery-path kubeconfig audit (T5)
+
+Assignment requires a **repository-wide** search, not only the GitOps delivery
+workflows:
+
+```bash
+grep -RIn 'kubeconfig\|EKS_KUBECONFIG\|aws eks update-kubeconfig' .
+```
+
+**GitOps delivery path** (`ci.yml` → `_build-and-push.yml` → `_bump-config.yml`):
+**0 matches** — no cluster credentials on the post-merge deploy loop.
+
+**Other matches (pre-existing, out of scope for W6 D2):**
+
+| File | Purpose |
+|------|---------|
+| `.github/workflows/k8s-ci.yml` | W5 D3 lab — ephemeral k3d cluster for integration tests |
+| `.github/workflows/observability.yml` | W5 D5 lab — k3d cluster for observability stack CI |
+
+Those workflows spin up disposable k3d clusters in CI runners; they are unrelated
+to the GitOps cutover and were not modified in W6 D2.
+
 ## What this layer does NOT do (yet)
 
 - External Secrets Operator — W6 D3.
