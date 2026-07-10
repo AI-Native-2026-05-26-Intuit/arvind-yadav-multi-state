@@ -60,8 +60,8 @@ Resources:
   # Trust policy is the EKS OIDC provider from the W6 D3 EKS stack
   # (read via !ImportValue); sub claim is pinned EXACTLY to the
   # namespace + service account. Permission policy is exactly
-  # one Action on exactly one Resource ARN; never bedrock:* and
-  # never Resource: '*'.
+  # one Action on exactly one Resource ARN; never a wildcard Action
+  # or wildcard Resource on the Bedrock invoke permission.
   BedrockInvokeRole:
     Type: AWS::IAM::Role
     Properties:
