@@ -170,6 +170,8 @@ aws ecr describe-images \
 # Actions → deploy-prod → Run workflow → paste the 40-char SHA tag
 ```
 
+**Week 6 Day 4:** LLM cost observability — Bedrock IRSA, per-request EMF cost metrics, pgvector embeddings, and the monthly budget alarm. Full reference: [multistate-api/COST.md](multistate-api/COST.md). Infrastructure stacks (including `multistate-cost-dev`): [multistate-api/INFRA.md](multistate-api/INFRA.md).
+
 ## Build & test
 
 ```bash
