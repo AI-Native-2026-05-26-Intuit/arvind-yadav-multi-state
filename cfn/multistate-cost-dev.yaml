@@ -130,8 +130,8 @@ Resources:
   # extracted from the EMF emission the W3D1 proxy filter writes;
   # threshold is the moving 15-minute average. TreatMissingData:
   # breaching converts metric silence into an alarm condition
-  # (Section 9 sticking point #1 explains why notBreaching is the
-  # silent-pipeline-death failure mode).
+  # (Section 9 sticking point #1: the inverse setting lets a dead
+  # pipeline sit silently in OK forever).
   CostPerRequestAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

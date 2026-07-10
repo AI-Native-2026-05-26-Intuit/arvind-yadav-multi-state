@@ -2,8 +2,8 @@
 //
 // W3D1 LLM-proxy: cost middleware. Invariants this file enforces:
 //   * Costs are stored in Redis as integer minor units (cost_usd_e5,
-//     a long). HINCRBYFLOAT is BANNED in this package -- a CI grep
-//     fails the build if it appears.
+//     a long). Floating-point Redis increments are BANNED in this
+//     package -- a CI grep fails the build if they appear.
 //   * BigDecimal arithmetic sets scale + RoundingMode.HALF_UP. No
 //     doubles in the cost-arithmetic path.
 //   * EMF emission may use a double for the metric VALUE field
@@ -47,7 +47,7 @@ public final class CostMiddleware {
             .movePointRight(5)
             .longValueExact();
 
-        // 3. HINCRBY on the integer field -- NEVER HINCRBYFLOAT.
+        // 3. HINCRBY on the integer field -- never floating-point increments.
         LocalDate day = LocalDate.ofInstant(ctx.at(), ZoneOffset.UTC);
         store.incrementTenantDay(ctx.tenant(), day, costUsdE5);
 
