@@ -76,20 +76,23 @@ Resources:
     Properties:
       RoleName: multistate-bedrock-invoke
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Federated: !ImportValue multistate-app-dev-EksOidcProviderArn
-            Action: sts:AssumeRoleWithWebIdentity
-            Condition:
-              # StringEquals (not StringLike): the IRSA sub claim
-              # is a single literal value. Any wildcard here is
-              # an EKS-cluster-wide privilege-escalation footgun.
-              StringEquals:
-                Fn::Sub:
-                  - "${IssuerHost}:sub": "system:serviceaccount:multistate-dev:multistate-svc"
-                  - IssuerHost: !ImportValue multistate-app-dev-EksOidcIssuerHost
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Federated": "${OidcProviderArn}"},
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "${IssuerHost}:sub": "system:serviceaccount:multistate-dev:multistate-svc"
+                  }
+                }
+              }]
+            }
+          - OidcProviderArn: !ImportValue multistate-app-dev-EksOidcProviderArn
+            IssuerHost: !ImportValue multistate-app-dev-EksOidcIssuerHost
       Policies:
         - PolicyName: bedrock-invoke-narrow
           PolicyDocument:
