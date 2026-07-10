@@ -39,6 +39,28 @@ jobs:
       - name: Gradle build + tests
         run: ./gradlew --no-daemon clean build
 
+      - name: Ban HINCRBYFLOAT in cost package
+        run: |
+          if grep -RIn "hincrByFloat\|HINCRBYFLOAT" \
+              src/main/java/com/uptimecrew/multistate/llmproxy/cost/; then
+            echo "HINCRBYFLOAT is banned in the cost package"
+            exit 1
+          fi
+          if grep -RIn "doubleValue()" \
+              src/main/java/com/uptimecrew/multistate/llmproxy/cost/ \
+              | grep -i cost; then
+            echo "doubleValue() on cost* BigDecimal is banned"
+            exit 1
+          fi
+
+      - name: Ban Math.random in embeddings integration test
+        run: |
+          if grep -RIn "Math\.random\|new Random" \
+              src/test/java/com/uptimecrew/multistate/embeddings/; then
+            echo "Math.random / Random banned in embeddings tests"
+            exit 1
+          fi
+
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
