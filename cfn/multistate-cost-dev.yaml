@@ -20,6 +20,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: multistate cost stack -- Bedrock IRSA, SNS, alarm, budget, CUR bucket.
 
+# Reusable tag set: cost-allocation keys (service/env/tenant/feature) plus
+# SCP-required keys from the account policy (environment/trainee/team).
+# Matches multistate-app-dev and LAMBDA_DEPLOYMENT.md conventions.
+
 Parameters:
   EnvName:
     Type: String
@@ -51,10 +55,15 @@ Resources:
       TopicName: multistate-cost-alarms-dev
       KmsMasterKeyId: alias/aws/sns
       Tags:
-        - {Key: service, Value: multistate}
-        - {Key: env,     Value: !Ref EnvName}
-        - {Key: tenant,  Value: shared}
-        - {Key: feature, Value: summarize-nexus}
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
 
   # --- The IRSA role the EKS pod assumes to call Bedrock.
   # Trust policy is the EKS OIDC provider from the W6 D3 EKS stack
@@ -71,22 +80,16 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Federated:
-                Fn::ImportValue: !Sub "multistate-app-dev-EksOidcProviderArn"
+              Federated: !ImportValue multistate-app-dev-EksOidcProviderArn
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               # StringEquals (not StringLike): the IRSA sub claim
               # is a single literal value. Any wildcard here is
               # an EKS-cluster-wide privilege-escalation footgun.
               StringEquals:
-                # The OIDC issuer host is exported by the EKS stack.
                 Fn::Sub:
-                  - "${IssuerHost}:sub"
-                  - IssuerHost:
-                      Fn::ImportValue: !Sub "multistate-app-dev-EksOidcIssuerHost"
-                # Pinned to the exact (namespace, service-account) pair.
-                Fn::Sub:
-                  - "system:serviceaccount:multistate-dev:multistate-svc"
+                  - "${IssuerHost}:sub": "system:serviceaccount:multistate-dev:multistate-svc"
+                  - IssuerHost: !ImportValue multistate-app-dev-EksOidcIssuerHost
       Policies:
         - PolicyName: bedrock-invoke-narrow
           PolicyDocument:
@@ -101,10 +104,15 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
       Tags:
-        - {Key: service, Value: multistate}
-        - {Key: env,     Value: !Ref EnvName}
-        - {Key: tenant,  Value: shared}
-        - {Key: feature, Value: summarize-nexus}
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
 
   # --- Explicit-deny policy attached on budget-cap breach.
   # Detached as part of the human reset flow when the next
@@ -191,6 +199,16 @@ Resources:
                 Condition:
                   ArnEquals:
                     "iam:PolicyARN": !Ref BedrockDenyOnBudget
+      Tags:
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
 
   # --- The monthly cost budget. CostFilters scope it to the
   # capstone's service tag so it doesn't include unrelated spend.
@@ -286,10 +304,15 @@ Resources:
               - StorageClass: STANDARD_IA
                 TransitionInDays: 90
       Tags:
-        - {Key: service, Value: multistate}
-        - {Key: env,     Value: !Ref EnvName}
-        - {Key: tenant,  Value: shared}
-        - {Key: feature, Value: summarize-nexus}
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
 
   CurBucketPolicy:
     Type: AWS::S3::BucketPolicy
