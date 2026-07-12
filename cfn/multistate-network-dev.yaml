@@ -19,6 +19,8 @@ Parameters:
     Description: VPC CIDR. Must not overlap any peered network.
     AllowedPattern: "^10\\.\\d{1,3}\\.0\\.0/16$"
 
+# IsDev  → single NAT GW in AZ-a (cost-optimised for dev)
+# IsHA   → one NAT GW per AZ for staging/prod (no cross-AZ NAT traffic)
 Conditions:
   IsDev: !Equals [!Ref EnvName, dev]
   IsHA:  !Not    [!Equals [!Ref EnvName, dev]]

@@ -12,6 +12,7 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, staging, prod]
+    Description: Deployment environment; used in resource tags.
 
 Resources:
   MultistateArtifactsBucket:
@@ -44,6 +45,8 @@ Resources:
             Transitions:
               - StorageClass: STANDARD_IA
                 TransitionInDays: 90
+              - StorageClass: GLACIER_IR
+                TransitionInDays: 365
           - Id: expire-old-versions
             Status: Enabled
             NoncurrentVersionExpiration:

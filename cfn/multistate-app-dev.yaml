@@ -15,6 +15,7 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, staging, prod]
+    Description: Deployment environment; gates resource naming and tags.
   NetworkStackName:
     Type: String
     Default: multistate-network-dev
@@ -23,6 +24,7 @@ Parameters:
     Type: String
     Default: db.t4g.small
     AllowedValues: [db.t4g.small, db.t4g.medium, db.m6g.large]
+    Description: RDS instance class; t4g.small is sufficient for dev workloads.
 
 Resources:
   DbMasterSecret:
@@ -125,6 +127,18 @@ Resources:
         - {Key: environment, Value: !Ref EnvName}
         - {Key: trainee,     Value: arvind_yadav}
         - {Key: team,        Value: multistate}
+
+  AppSgEgressToDb:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId:
+        !ImportValue
+          "Fn::Sub": "${NetworkStackName}-AppSgId"
+      IpProtocol: tcp
+      FromPort:   5432
+      ToPort:     5432
+      DestinationSecurityGroupId: !Ref DbSecurityGroup
+      Description: PostgreSQL egress from app tier to DB SG on 5432.
 
   SecretTargetAttachment:
     Type: AWS::SecretsManager::SecretTargetAttachment
