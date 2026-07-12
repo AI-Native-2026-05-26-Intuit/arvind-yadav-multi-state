@@ -1,0 +1,52 @@
+# .github/workflows/load.yml
+# TASK 3: CI gate. Runs k6 on workflow_dispatch with a
+# manual approval gate on the load-test environment so a
+# load test can't fire during business hours by accident.
+# Exit code from k6 is the gate.
+name: load
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  k6:
+    name: k6 SLO threshold gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: load-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::279566174801:role/multistate-api-build-push
+          aws-region: us-east-1
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Resolve dev TARGET
+        run: |
+          echo "TARGET=${TARGET:-http://multistate.dev.uptimecrew.internal:8080}" >> "$GITHUB_ENV"
+        env:
+          TARGET: ${{ vars.LOAD_TEST_TARGET }}
+
+      - name: Run k6 with SLO thresholds
+        run: |
+          k6 run \
+            --summary-export=k6-summary.json \
+            loadtests/multistate-api-p99.js
+
+      - name: Upload k6 summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: k6-summary.json
+          retention-days: 14
