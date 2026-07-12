@@ -344,10 +344,10 @@ Resources:
           - id: W28
             reason: "Explicit group name required for cross-stack reference and operational clarity."
           - id: W5
-            reason: "Egress is explicitly port 443 only (ECR, STS, Secrets Manager). cfn-nag W5 fires on any 0.0.0.0/0 egress regardless of port restriction."
+            reason: "Egress 443/0.0.0.0/0 required for ECR, STS, Secrets Manager. Port 5432 is scoped to VPC CIDR only."
     Properties:
       GroupName:        !Sub "multistate-${EnvName}-app-sg"
-      GroupDescription: App SG; ingress 8080 from VPC only; egress 443 only.
+      GroupDescription: App SG; ingress 8080 from VPC only; egress 443 to internet and 5432 to VPC.
       VpcId:            !Ref Vpc
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -361,6 +361,11 @@ Resources:
           ToPort:     443
           CidrIp:     0.0.0.0/0
           Description: HTTPS egress (ECR, STS, Secrets Manager).
+        - IpProtocol: tcp
+          FromPort:   5432
+          ToPort:     5432
+          CidrIp:     !Ref VpcCidr
+          Description: PostgreSQL egress to DB tier within VPC.
       Tags:
         - {Key: Name,        Value: !Sub "multistate-${EnvName}-app-sg"}
         - {Key: Env,         Value: !Ref EnvName}
