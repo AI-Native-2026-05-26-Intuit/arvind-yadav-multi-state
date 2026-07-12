@@ -73,6 +73,11 @@ Resources:
   # or wildcard Resource on the Bedrock invoke permission.
   BedrockInvokeRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "IRSA role name pinned for EKS service account annotation and BudgetsAction target."
     Properties:
       RoleName: multistate-bedrock-invoke
       AssumeRolePolicyDocument:
@@ -125,6 +130,11 @@ Resources:
   # X-Llm-Disabled-Reason: budget_cap, not a generic 500.
   BedrockDenyOnBudget:
     Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit policy name required for BudgetsAction IamActionDefinition PolicyArn reference."
     Properties:
       ManagedPolicyName: MultistateBedrockDenyPolicy
       Description: Explicit-deny Bedrock invoke; attached by BudgetsAction at 100% actual.
@@ -145,6 +155,11 @@ Resources:
   # pipeline sit silently in OK forever).
   CostPerRequestAlarm:
     Type: AWS::CloudWatch::Alarm
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit alarm name required for runbook cross-reference and drift detection."
     Properties:
       AlarmName: multistate/cost-per-request-dev
       AlarmDescription: 15-minute moving average CostUsd > 0.005 USD/call.
@@ -179,6 +194,11 @@ Resources:
   # to the IRSA role). Trust principal is the AWS Budgets service.
   BudgetActionRole:
     Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit role name required for BudgetsAction ExecutionRoleArn wiring."
     Properties:
       RoleName: !Sub "multistate-budget-action-${EnvName}"
       AssumeRolePolicyDocument:
@@ -284,6 +304,11 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: "S3 access logging deferred to staging/prod; dev CUR bucket only."
     Properties:
       BucketName: !Sub "uptimecrew-multistate-cur-dev-${AWS::AccountId}"
       VersioningConfiguration:
