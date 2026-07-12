@@ -1,0 +1,45 @@
+# cfn/multistate-observability-dev.yaml
+# TASK 1 observability stack: X-Ray sampling rule deployed
+# through CFN, NOT the X-Ray console -- same IaC discipline
+# from W6 D3. ReservoirSize: 10 floors the
+# rate at 10 traces per second; FixedRate: 0.05 adds
+# 5 percent of everything above the floor.
+#
+# NEVER FixedRate: 0 — the curriculum's Topic-4 ai_practice rejects it.
+# Config-repo copy is GitOps source of truth; this file is for
+# local deploy / CI parity.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: multistate observability stack -- X-Ray sampling rule.
+
+Parameters:
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+  multistateSamplingRule:
+    Type: AWS::XRay::SamplingRule
+    Properties:
+      SamplingRule:
+        RuleName: multistate-api-default
+        Priority: 1000
+        ReservoirSize: 10
+        FixedRate: 0.05
+        ServiceName: multistate-api
+        ServiceType: "*"
+        Host: "*"
+        HTTPMethod: "*"
+        URLPath: "*"
+        ResourceARN: "*"
+        Version: 1
+      Tags:
+        - {Key: service, Value: multistate}
+        - {Key: env,     Value: !Ref EnvName}
+        - {Key: tenant,  Value: shared}
+        - {Key: feature, Value: summarize-nexus}
+
+Outputs:
+  SamplingRuleArn:
+    Value: !GetAtt multistateSamplingRule.RuleARN
+    Export: {Name: !Sub "${AWS::StackName}-SamplingRuleArn"}
