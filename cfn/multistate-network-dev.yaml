@@ -1,0 +1,392 @@
+# cfn/multistate-network-dev.yaml
+# TASK 2 network stack: 3-AZ VPC, IGW, public + private subnets
+# (one of each per AZ), per-env NAT GW count gated by Conditions
+# (single NAT in dev; per-AZ NAT in staging/prod), and one
+# application security group. Outputs are EXPORTED for the
+# application stack (Task 3) to consume via !ImportValue.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: multistate 3-AZ VPC + app SG -- parameterised by env.
+
+Parameters:
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment; gates NAT-GW count.
+  VpcCidr:
+    Type: String
+    Default: 10.43.0.0/16
+    Description: VPC CIDR. Must not overlap any peered network.
+    AllowedPattern: "^10\\.\\d{1,3}\\.0\\.0/16$"
+
+# IsDev  → single NAT GW in AZ-a (cost-optimised for dev)
+# IsHA   → one NAT GW per AZ for staging/prod (no cross-AZ NAT traffic)
+Conditions:
+  IsDev: !Equals [!Ref EnvName, dev]
+  IsHA:  !Not    [!Equals [!Ref EnvName, dev]]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W60
+            reason: "VPC flow logs are a cost item deferred to staging/prod; dev environment."
+    Properties:
+      CidrBlock:           !Ref VpcCidr
+      EnableDnsSupport:    true
+      EnableDnsHostnames:  true
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-vpc"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-igw"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  IgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:             !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "Public subnets intentionally assign public IPs; NAT GWs and ALBs require this."
+    Properties:
+      VpcId:               !Ref Vpc
+      AvailabilityZone:    !Select [0, !GetAZs ""]
+      CidrBlock:           !Select [0, !Cidr [!Ref VpcCidr, 6, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-public-a"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "Public subnets intentionally assign public IPs; NAT GWs and ALBs require this."
+    Properties:
+      VpcId:               !Ref Vpc
+      AvailabilityZone:    !Select [1, !GetAZs ""]
+      CidrBlock:           !Select [1, !Cidr [!Ref VpcCidr, 6, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-public-b"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W33
+            reason: "Public subnets intentionally assign public IPs; NAT GWs and ALBs require this."
+    Properties:
+      VpcId:               !Ref Vpc
+      AvailabilityZone:    !Select [2, !GetAZs ""]
+      CidrBlock:           !Select [2, !Cidr [!Ref VpcCidr, 6, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-public-c"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:            !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock:        !Select [3, !Cidr [!Ref VpcCidr, 6, 8]]
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-private-a"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:            !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock:        !Select [4, !Cidr [!Ref VpcCidr, 6, 8]]
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-private-b"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:            !Ref Vpc
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock:        !Select [5, !Cidr [!Ref VpcCidr, 6, 8]]
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-private-c"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  NatEipA:
+    Type: AWS::EC2::EIP
+    DependsOn: IgwAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-nat-eip-a"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEipA.AllocationId
+      SubnetId:     !Ref PublicSubnetA
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-nat-a"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  NatEipB:
+    Type: AWS::EC2::EIP
+    Condition: IsHA
+    DependsOn: IgwAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Condition: IsHA
+    Properties:
+      AllocationId: !GetAtt NatEipB.AllocationId
+      SubnetId:     !Ref PublicSubnetB
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  NatEipC:
+    Type: AWS::EC2::EIP
+    Condition: IsHA
+    DependsOn: IgwAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  NatGatewayC:
+    Type: AWS::EC2::NatGateway
+    Condition: IsHA
+    Properties:
+      AllocationId: !GetAtt NatEipC.AllocationId
+      SubnetId:     !Ref PublicSubnetC
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttachment
+    Properties:
+      RouteTableId:         !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:            !Ref InternetGateway
+  PublicAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable}
+  PublicAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PublicSubnetB, RouteTableId: !Ref PublicRouteTable}
+  PublicAssocC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PublicSubnetC, RouteTableId: !Ref PublicRouteTable}
+
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PrivateDefaultRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:         !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:         !Ref NatGatewayA
+  PrivateAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PrivateSubnetA, RouteTableId: !Ref PrivateRouteTableA}
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Condition: IsHA
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PrivateDefaultRouteB:
+    Type: AWS::EC2::Route
+    Condition: IsHA
+    Properties:
+      RouteTableId:         !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:         !Ref NatGatewayB
+  PrivateAssocBHA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: IsHA
+    Properties: {SubnetId: !Ref PrivateSubnetB, RouteTableId: !Ref PrivateRouteTableB}
+  PrivateAssocBDev:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: IsDev
+    Properties: {SubnetId: !Ref PrivateSubnetB, RouteTableId: !Ref PrivateRouteTableA}
+
+  PrivateRouteTableC:
+    Type: AWS::EC2::RouteTable
+    Condition: IsHA
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+  PrivateDefaultRouteC:
+    Type: AWS::EC2::Route
+    Condition: IsHA
+    Properties:
+      RouteTableId:         !Ref PrivateRouteTableC
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:         !Ref NatGatewayC
+  PrivateAssocCHA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: IsHA
+    Properties: {SubnetId: !Ref PrivateSubnetC, RouteTableId: !Ref PrivateRouteTableC}
+  PrivateAssocCDev:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: IsDev
+    Properties: {SubnetId: !Ref PrivateSubnetC, RouteTableId: !Ref PrivateRouteTableA}
+
+  MultistateAppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit group name required for cross-stack reference and operational clarity."
+          - id: W5
+            reason: "Egress 443/0.0.0.0/0 required for ECR, STS, Secrets Manager. Port 5432 is scoped to VPC CIDR only."
+    Properties:
+      GroupName:        !Sub "multistate-${EnvName}-app-sg"
+      GroupDescription: App SG; ingress 8080 from VPC only; egress 443 to internet and 5432 to VPC.
+      VpcId:            !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort:   8080
+          ToPort:     8080
+          CidrIp:     !Ref VpcCidr
+          Description: App port, in-VPC only.
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort:   443
+          ToPort:     443
+          CidrIp:     0.0.0.0/0
+          Description: HTTPS egress (ECR, STS, Secrets Manager).
+        - IpProtocol: tcp
+          FromPort:   5432
+          ToPort:     5432
+          CidrIp:     !Ref VpcCidr
+          Description: PostgreSQL egress to DB tier within VPC.
+      Tags:
+        - {Key: Name,        Value: !Sub "multistate-${EnvName}-app-sg"}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+    Export: {Name: !Sub "${AWS::StackName}-VpcId"}
+  VpcCidr:
+    Value: !Ref VpcCidr
+    Export: {Name: !Sub "${AWS::StackName}-VpcCidr"}
+  PrivateSubnets:
+    Value: !Join [",", [!Ref PrivateSubnetA, !Ref PrivateSubnetB, !Ref PrivateSubnetC]]
+    Export: {Name: !Sub "${AWS::StackName}-PrivateSubnets"}
+  PublicSubnets:
+    Value: !Join [",", [!Ref PublicSubnetA, !Ref PublicSubnetB, !Ref PublicSubnetC]]
+    Export: {Name: !Sub "${AWS::StackName}-PublicSubnets"}
+  AppSecurityGroupId:
+    Value: !Ref MultistateAppSecurityGroup
+    Export: {Name: !Sub "${AWS::StackName}-AppSgId"}
