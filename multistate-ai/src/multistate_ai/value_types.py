@@ -4,6 +4,7 @@ These are pure in-memory value objects the sidecar builds itself.
 They never cross an external boundary; that is what Pydantic models
 in models.py are for.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

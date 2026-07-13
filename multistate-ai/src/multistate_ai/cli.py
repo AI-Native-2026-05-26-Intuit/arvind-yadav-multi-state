@@ -1,4 +1,5 @@
 """CLI entrypoint — the one place print() is allowed."""
+
 from __future__ import annotations
 
 import sys

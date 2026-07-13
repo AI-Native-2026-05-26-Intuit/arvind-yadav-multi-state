@@ -4,6 +4,7 @@ These models mirror the Java domain on the multistate-api side. The JSON
 emitted by ``model_dump_json()`` round-trips against the Java service's
 JSON output for Tenant. See tests/test_models.py.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -67,7 +68,5 @@ class NexusReviewResult(BaseModel):  # type: ignore[explicit-any]  # Pydantic Ba
     @model_validator(mode="after")
     def _high_confidence_requires_rationale(self) -> NexusReviewResult:
         if self.confidence >= 0.9 and len(self.rationale) < 16:
-            raise ValueError(
-                "high-confidence results require a rationale of >=16 chars"
-            )
+            raise ValueError("high-confidence results require a rationale of >=16 chars")
         return self
