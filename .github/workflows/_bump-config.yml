@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out gitops repo
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v4.1.7
         with:
           repository: AI-Native-2026-05-26-Intuit/arvind-yadav-multistate-config
           token: ${{ secrets.GITOPS_REPO_TOKEN }}
