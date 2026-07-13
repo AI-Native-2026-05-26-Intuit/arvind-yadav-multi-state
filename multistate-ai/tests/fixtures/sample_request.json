@@ -1,0 +1,10 @@
+{
+  "correlationId": "corr-task1-smoke",
+  "tenant": {
+    "id": "tenant-001",
+    "tenantId": "tenant-a",
+    "createdAt": "2026-01-15T12:00:00Z",
+    "amount": "123.45"
+  },
+  "model_id": "anthropic.claude-3-5-sonnet-20241022-v2:0"
+}
