@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from multistate_ai.models import NexusReviewResult, Tenant
+from multistate_ai.models import NexusReviewRequest, NexusReviewResult, Tenant
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -61,6 +61,20 @@ def test_result_high_confidence_requires_long_rationale() -> None:
             confidence=0.95,
             rationale="short",
         )
+
+
+def test_request_validates_correlation_prefix() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        NexusReviewRequest(
+            correlationId="bad-id",
+            tenant=Tenant(
+                id="tenant-001",
+                tenantId="tenant-a",
+                createdAt=datetime(2026, 1, 15, 12, 0, tzinfo=UTC),
+                amount=Decimal("0"),
+            ),
+        )
+    assert "correlation_id must start with" in str(excinfo.value)
 
 
 def test_round_trip_against_java_fixture() -> None:
