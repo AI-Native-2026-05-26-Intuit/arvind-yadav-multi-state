@@ -33,7 +33,7 @@ jobs:
       - run: pip install "cfn-lint>=1.44.0" cfn-lint-serverless
 
       - name: Set up Ruby (for cfn-nag)
-        uses: ruby/setup-ruby@a4effe49ee8ee5b8b5091268c473a4628afb5651  # v1.211.0
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9  # v1.211.0
         with:
           ruby-version: "3.3"
       - run: gem install cfn-nag -v 0.8.10
