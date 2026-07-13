@@ -127,6 +127,7 @@ dependencies {
     testImplementation 'org.springframework.kafka:spring-kafka-test'
     testImplementation 'org.testcontainers:kafka:1.20.4'
     testImplementation 'org.awaitility:awaitility:4.2.2'
+    testImplementation 'org.flywaydb:flyway-core:10.20.1'
 
     // Spring Boot 3.3 already manages spring-kafka; the explicit Spring AI MCP
     // starter version is required because Spring AI is not in the Boot BOM.
@@ -293,3 +294,27 @@ jacocoTestCoverageVerification {
 }
 
 check.dependsOn jacocoTestCoverageVerification  // (7) gate `./gradlew check`
+
+tasks.register('integrationTest', Test) {
+    group = 'verification'
+    description = 'Runs Testcontainers integration tests (embeddings, etc.).'
+    useJUnitPlatform()
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include '**/embeddings/**'
+    maxParallelForks = 1
+    environment 'AWS_REGION', 'us-east-1'
+    environment 'AWS_DEFAULT_REGION', 'us-east-1'
+    def rancherSock = "${System.getProperty('user.home')}/.rd/docker.sock"
+    if (file(rancherSock).exists()) {
+        environment 'DOCKER_HOST', "unix://${rancherSock}"
+        systemProperty 'docker.host', "unix://${rancherSock}"
+        systemProperty 'api.version', '1.41'
+        environment 'TESTCONTAINERS_CHECKS_DISABLE', 'true'
+        environment 'TESTCONTAINERS_RYUK_DISABLED', 'true'
+    }
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+    }
+}

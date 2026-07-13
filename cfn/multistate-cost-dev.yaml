@@ -1,0 +1,380 @@
+# cfn/multistate-cost-dev.yaml
+# TASK 1 cost stack: extends yesterday's W6 D3 substrate with the
+# managed-AI dependency, the SNS fan-out topic for cost alarms,
+# the per-request CloudWatch alarm, the monthly AWS Budget + a
+# 100%-actual BudgetsAction attaching an explicit-deny policy to
+# the IRSA role, and a hardened S3 bucket where the Cost and
+# Usage Report rows land. Imports the OIDC provider arn + the
+# EKS namespace from the W6 D2 + W6 D3 stacks via !ImportValue.
+#
+# Deploy with the ChangeSet flow (same as W6 D3):
+#   aws cloudformation create-change-set \
+#     --stack-name multistate-cost-dev \
+#     --change-set-name initial --change-set-type CREATE \
+#     --capabilities CAPABILITY_NAMED_IAM \
+#     --template-body file://cfn/multistate-cost-dev.yaml \
+#     --parameters ParameterKey=EnvName,ParameterValue=dev \
+#     --region us-east-1
+#   aws cloudformation describe-change-set ... # paste into PR body
+#   aws cloudformation execute-change-set ...
+AWSTemplateFormatVersion: "2010-09-09"
+Description: multistate cost stack -- Bedrock IRSA, SNS, alarm, budget, CUR bucket.
+
+# Reusable tag set: cost-allocation keys (service/env/tenant/feature) plus
+# SCP-required keys from the account policy (environment/trainee/team).
+# Matches multistate-app-dev and LAMBDA_DEPLOYMENT.md conventions.
+
+Parameters:
+  EnvName:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment.
+  MonthlyBudgetUsd:
+    # The hard cap for the month. Below 80% the budget is silent;
+    # at 80% the SNS topic gets a forecasted notification; at 100%
+    # actual the BudgetsAction attaches the deny policy.
+    Type: Number
+    Default: 4200
+    MinValue: 100
+    MaxValue: 100000
+    Description: Monthly Bedrock spend cap, USD (cost-budget).
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-5-sonnet-20241022-v2:0
+    Description: Foundation model ARN suffix; pinned for explicit IAM scope.
+
+Resources:
+  # --- Cost Alarms SNS topic. Fan-out target for every cost alarm
+  # in this stack plus the budget's forecasted/actual notifications.
+  # Subscribers (Slack, PagerDuty) live in separate CFN resources
+  # so the alarm contract stays decoupled from the channel.
+  CostAlarmsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: multistate-cost-alarms-dev
+      KmsMasterKeyId: alias/aws/sns
+      Tags:
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  # --- The IRSA role the EKS pod assumes to call Bedrock.
+  # Trust policy is the EKS OIDC provider from the W6 D3 EKS stack
+  # (read via !ImportValue); sub claim is pinned EXACTLY to the
+  # namespace + service account. Permission policy is exactly
+  # one Action on exactly one Resource ARN; never a wildcard Action
+  # or wildcard Resource on the Bedrock invoke permission.
+  BedrockInvokeRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "IRSA role name pinned for EKS service account annotation and BudgetsAction target."
+    Properties:
+      RoleName: multistate-bedrock-invoke
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Federated": "${OidcProviderArn}"},
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "${IssuerHost}:sub": "system:serviceaccount:multistate-dev:multistate-svc"
+                  }
+                }
+              }]
+            }
+          - OidcProviderArn: !ImportValue multistate-app-dev-EksOidcProviderArn
+            IssuerHost: !ImportValue multistate-app-dev-EksOidcIssuerHost
+      Policies:
+        - PolicyName: bedrock-invoke-narrow
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: BedrockInvokeOneModel
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                # The exact ARN of the one foundation model this
+                # role is allowed to invoke. Adding a second model
+                # is a new PR + new ARN, not a wildcard.
+                Resource:
+                  - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+      Tags:
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  # --- Explicit-deny policy attached on budget-cap breach.
+  # Detached as part of the human reset flow when the next
+  # month rolls over OR a finance review approves an increase.
+  # Pair with the watch-out in Section 9: the proxy MUST catch
+  # AccessDeniedException and return a shaped 503 with
+  # X-Llm-Disabled-Reason: budget_cap, not a generic 500.
+  BedrockDenyOnBudget:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit policy name required for BudgetsAction IamActionDefinition PolicyArn reference."
+    Properties:
+      ManagedPolicyName: MultistateBedrockDenyPolicy
+      Description: Explicit-deny Bedrock invoke; attached by BudgetsAction at 100% actual.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyBedrockInvokeOnBudgetCap
+            Effect: Deny
+            Action: bedrock:InvokeModel
+            Resource:
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+
+  # --- The Cost-Per-Request alarm. Metric is acme/llmproxy/CostUsd
+  # extracted from the EMF emission the W3D1 proxy filter writes;
+  # threshold is the moving 15-minute average. TreatMissingData:
+  # breaching converts metric silence into an alarm condition
+  # (Section 9 sticking point #1: the inverse setting lets a dead
+  # pipeline sit silently in OK forever).
+  CostPerRequestAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit alarm name required for runbook cross-reference and drift detection."
+    Properties:
+      AlarmName: multistate/cost-per-request-dev
+      AlarmDescription: 15-minute moving average CostUsd > 0.005 USD/call.
+      ActionsEnabled: true
+      AlarmActions: [ !Ref CostAlarmsTopic ]
+      OKActions:    [ !Ref CostAlarmsTopic ]
+      InsufficientDataActions: [ !Ref CostAlarmsTopic ]
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: 0.005
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Metrics:
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: "acme/llmproxy"
+              MetricName: "CostUsd"
+              Dimensions:
+                - {Name: service, Value: multistate}
+                - {Name: feature, Value: summarize-nexus}
+            Period: 300
+            Stat: Average
+          ReturnData: false
+        - Id: e1
+          Expression: "AVG(m1)"
+          Label: "15m average CostUsd"
+          ReturnData: true
+
+  # --- The IAM role the BudgetsAction itself assumes (not the
+  # IRSA role; this one carries permission to AttachRolePolicy
+  # to the IRSA role). Trust principal is the AWS Budgets service.
+  BudgetActionRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Explicit role name required for BudgetsAction ExecutionRoleArn wiring."
+    Properties:
+      RoleName: !Sub "multistate-budget-action-${EnvName}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: budgets.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: attach-deny-policy-narrow
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AttachDenyToBedrockRole
+                Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource:
+                  - !GetAtt BedrockInvokeRole.Arn
+                Condition:
+                  ArnEquals:
+                    "iam:PolicyARN": !Ref BedrockDenyOnBudget
+      Tags:
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  # --- The monthly cost budget. CostFilters scope it to the
+  # capstone's service tag so it doesn't include unrelated spend.
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: multistate-monthly-cost-dev
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+        CostFilters:
+          TagKeyValue:
+            - "user:service$multistate"
+            - !Sub "user:env$${EnvName}"
+      NotificationsWithSubscribers:
+        # Early warning at forecasted 80%: emails finance via SNS.
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref CostAlarmsTopic
+        # Hard cap at actual 100%: SNS fans out + the action below
+        # attaches the deny policy automatically.
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref CostAlarmsTopic
+
+  # --- The BudgetsAction. ApprovalModel AUTOMATIC means no human
+  # in the loop -- the moment actual >= 100% the deny policy
+  # attaches. That is the agreed trade-off; the shaped 503
+  # fallback in the proxy code keeps it from being a customer-
+  # facing 500. Flip to MANUAL if the team wants a human gate.
+  BudgetActionAttachDeny:
+    Type: AWS::Budgets::BudgetsAction
+    Properties:
+      BudgetName: !Ref MonthlyBudget
+      NotificationType: ACTUAL
+      ActionType: APPLY_IAM_POLICY
+      ApprovalModel: AUTOMATIC
+      ExecutionRoleArn: !GetAtt BudgetActionRole.Arn
+      ActionThreshold:
+        Type: PERCENTAGE
+        Value: 100
+      Definition:
+        IamActionDefinition:
+          PolicyArn: !Ref BedrockDenyOnBudget
+          Roles:
+            - !Ref BedrockInvokeRole
+      Subscribers:
+        - Type: SNS
+          Address: !Ref CostAlarmsTopic
+
+  # --- Cost and Usage Report destination bucket. PAB x4, KMS
+  # default encryption, deny-non-TLS bucket policy, BOTH
+  # DeletionPolicy: Retain AND UpdateReplacePolicy: Retain so a
+  # property-change Replacement or a stack delete never destroys
+  # the historical CUR rows (Section 9 callback to W6 D3).
+  CurBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: "S3 access logging deferred to staging/prod; dev CUR bucket only."
+    Properties:
+      BucketName: !Sub "uptimecrew-multistate-cur-dev-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls:       true
+        BlockPublicPolicy:     true
+        IgnorePublicAcls:      true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ia-after-90-days
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+      Tags:
+        - {Key: service,     Value: multistate}
+        - {Key: env,         Value: !Ref EnvName}
+        - {Key: tenant,      Value: shared}
+        - {Key: feature,     Value: summarize-nexus}
+        - {Key: Env,         Value: !Ref EnvName}
+        - {Key: Project,     Value: multistate}
+        - {Key: environment, Value: !Ref EnvName}
+        - {Key: trainee,     Value: arvind_yadav}
+        - {Key: team,        Value: multistate}
+
+  CurBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CurBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyNonTLS
+            Effect: Deny
+            Principal: "*"
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+            Resource:
+              - !GetAtt CurBucket.Arn
+              - !Sub "${CurBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+Outputs:
+  BedrockInvokeRoleArn:
+    Description: IRSA role ARN the EKS service account annotates.
+    Value: !GetAtt BedrockInvokeRole.Arn
+    Export: {Name: !Sub "${AWS::StackName}-BedrockInvokeRoleArn"}
+  CostAlarmsTopicArn:
+    Description: SNS topic ARN; Slack + PagerDuty subscribers live in their own CFN.
+    Value: !Ref CostAlarmsTopic
+    Export: {Name: !Sub "${AWS::StackName}-CostAlarmsTopicArn"}
+  MonthlyBudgetName:
+    Value: !Ref MonthlyBudget
+    Export: {Name: !Sub "${AWS::StackName}-MonthlyBudgetName"}
+  CurBucketName:
+    Value: !Ref CurBucket
+    Export: {Name: !Sub "${AWS::StackName}-CurBucketName"}

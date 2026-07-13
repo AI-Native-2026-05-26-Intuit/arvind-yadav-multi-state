@@ -73,3 +73,9 @@ jobs:
           aws cloudformation validate-template \
             --template-body file://cfn/multistate-artifacts-dev.yaml \
             --region us-east-1
+
+      - name: aws cloudformation validate-template (cost)
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://cfn/multistate-cost-dev.yaml \
+            --region us-east-1

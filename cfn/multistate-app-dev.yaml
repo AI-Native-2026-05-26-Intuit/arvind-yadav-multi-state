@@ -25,6 +25,18 @@ Parameters:
     Default: db.t4g.small
     AllowedValues: [db.t4g.small, db.t4g.medium, db.m6g.large]
     Description: RDS instance class; t4g.small is sufficient for dev workloads.
+  EksOidcProviderArn:
+    Type: String
+    Default: "arn:aws:iam::000000000000:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/PLACEHOLDER"
+    Description: >
+      ARN of the EKS cluster OIDC provider (from eks describe-cluster).
+      Exported for multistate-cost-dev Bedrock IRSA trust policy.
+  EksOidcIssuerHost:
+    Type: String
+    Default: "oidc.eks.us-east-1.amazonaws.com/id/PLACEHOLDER"
+    Description: >
+      OIDC issuer host without https:// (e.g. oidc.eks.us-east-1.amazonaws.com/id/EXAMPLE).
+      Exported for multistate-cost-dev Bedrock IRSA StringEquals sub claim key.
 
 Resources:
   DbMasterSecret:
@@ -108,7 +120,7 @@ Resources:
     Properties:
       DBInstanceIdentifier:  !Sub "multistate-${EnvName}"
       Engine:                postgres
-      EngineVersion:         "16.3"
+      EngineVersion:         "16.14"
       DBInstanceClass:       !Ref DbInstanceClass
       AllocatedStorage:      "20"
       StorageType:           gp3
@@ -142,3 +154,11 @@ Outputs:
   DbSecretArn:
     Value: !Ref DbMasterSecret
     Export: {Name: !Sub "${AWS::StackName}-DbSecretArn"}
+  EksOidcProviderArn:
+    Description: EKS OIDC provider ARN; consumed by multistate-cost-dev IRSA.
+    Value: !Ref EksOidcProviderArn
+    Export: {Name: !Sub "${AWS::StackName}-EksOidcProviderArn"}
+  EksOidcIssuerHost:
+    Description: EKS OIDC issuer host; consumed by multistate-cost-dev IRSA sub claim.
+    Value: !Ref EksOidcIssuerHost
+    Export: {Name: !Sub "${AWS::StackName}-EksOidcIssuerHost"}
