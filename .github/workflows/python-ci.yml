@@ -1,0 +1,58 @@
+# .github/workflows/python-ci.yml
+# Runs on PRs that touch the multistate-ai/ subtree.
+name: multistate-ai-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "multistate-ai/**"
+      - ".github/workflows/python-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "multistate-ai/**"
+      - ".github/workflows/python-ci.yml"
+
+concurrency:
+  group: python-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  python-quality-gate:
+    name: uv sync + ruff + mypy + pytest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: multistate-ai
+    steps:
+      - name: Check out source
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
+
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v3.1.7
+        with:
+          version: "0.4.18"
+          enable-cache: true
+
+      - name: Pin Python 3.12 via uv
+        run: uv python install 3.12
+
+      - name: uv sync --frozen (fail on lockfile drift)
+        run: uv sync --frozen
+
+      - name: ruff check
+        run: uv run ruff check
+
+      - name: ruff format --check
+        run: uv run ruff format --check
+
+      - name: mypy --strict
+        run: uv run mypy src/ tests/
+
+      - name: pytest with coverage
+        run: uv run pytest -v --cov=src --cov-fail-under=85

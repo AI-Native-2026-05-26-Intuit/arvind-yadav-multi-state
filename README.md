@@ -174,6 +174,13 @@ aws ecr describe-images \
 
 **Week 6 Day 5:** SRE capstone — KEDA worker scaling, SLO-derived HPA, Karpenter mixed NodePool, ADOT dual-export tracing, k6 load gate, integration spike. Full reference: [multistate-api/SRE-CAPSTONE.md](multistate-api/SRE-CAPSTONE.md).
 
+**Week 7 Day 1:** scaffolded the Python sidecar at [multistate-ai/](multistate-ai/) beside the Java app — uv-managed project with `src/` layout, Pydantic v2 boundary models, frozen value types, `MultistateAiSettings` with `SecretStr`, and a synchronous `httpx` + tenacity LLM proxy client with structured logging and W3 D2 correlation-id propagation. Full reference: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md). AI scaffold transcripts: [multistate-ai/PROMPT_JOURNAL.md](multistate-ai/PROMPT_JOURNAL.md).
+
+- **uv project + CLI.** [multistate-ai/pyproject.toml](multistate-ai/pyproject.toml) pins `requires-python = ">=3.12"`, separates runtime deps from `[dependency-groups] dev`, and commits [multistate-ai/uv.lock](multistate-ai/uv.lock). Package code lives under `src/multistate_ai/`; [cli.py](multistate-ai/src/multistate_ai/cli.py) is the only module allowed to call `print()`.
+- **Pydantic boundary.** [models.py](multistate-ai/src/multistate_ai/models.py) defines `Tenant`, `NexusReviewRequest`, `NexusReviewResult` with `extra="forbid"`, `frozen=True`, camelCase aliases, `Decimal` money, and field/model validators. [value_types.py](multistate-ai/src/multistate_ai/value_types.py) holds frozen `slots=True` dataclasses with tuple collections. Round-trip contract: [tests/fixtures/tenant_java.json](multistate-ai/tests/fixtures/tenant_java.json) + [test_models.py](multistate-ai/tests/test_models.py).
+- **httpx client + settings.** [settings.py](multistate-ai/src/multistate_ai/settings.py) is 12-factor config (`MULTISTATE_AI_*`, `secrets_dir="/run/secrets"`). [client.py](multistate-ai/src/multistate_ai/client.py) retries only transient failures via `_is_retryable()`; API key reaches the wire only through `SecretStr.get_secret_value()`.
+- **CI gate.** [`.github/workflows/python-ci.yml`](.github/workflows/python-ci.yml) is path-scoped to `multistate-ai/**` on `ubuntu-24.04`: `uv sync --frozen → ruff → mypy --strict → pytest --cov-fail-under=85`.
+
 ## Build & test
 
 ```bash
@@ -194,6 +201,20 @@ sam local invoke TenantLookupFunction --event events/get-tenant.json --env-vars 
 ./scripts/sam-deploy.sh     # validate + build + deploy (after AWS creds configured)
 ./scripts/sam-smoke.sh      # post-deploy curl + CloudWatch REPORT check
 ```
+
+**Python sidecar (W7 D1):**
+
+```bash
+cd multistate-ai
+uv sync --frozen            # install lockfile into .venv
+uv run ruff check
+uv run ruff format --check
+uv run mypy src/ tests/
+uv run pytest -v --cov=src --cov-fail-under=85
+uv run python src/multistate_ai/cli.py tests/fixtures/sample_request.json
+```
+
+See [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) for env vars (copy `.env.example` → `.env`, never commit `.env`).
 
 Requires JDK 17+.
 
@@ -344,6 +365,13 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 ## Project layout
 
 ```
+multistate-ai/                    # W7 D1 Python sidecar (uv + Pydantic + httpx)
+    pyproject.toml                # requires-python >=3.12; [dependency-groups] dev
+    uv.lock                       # committed; CI uses --frozen
+    PYTHON.md                     # purpose, run commands, AI deviations
+    PROMPT_JOURNAL.md             # unedited Claude scaffold transcripts
+    src/multistate_ai/            # models, settings, client, cli, value_types
+    tests/                        # pytest suite + fixtures/tenant_java.json
 src/main/java/com/uptimecrew/multistate/
     Application.java  # Spring Boot entry point (@SpringBootApplication, @EnableScheduling)
     api/              # @RestController endpoints (TenantController, TenantObservabilityController)
@@ -408,6 +436,7 @@ infra/oidc/
         k8s-ci.yml                       # kubeconform + k3d deploy smoke
         serverless.yml                   # SAM validate/build/test + main OIDC deploy
         web-ci.yml                       # multistate-web pnpm check (path-filtered PRs)
+        python-ci.yml                    # multistate-ai uv+ruff+mypy+pytest (path-filtered PRs)
 src/main/resources/graphql/
     schema.graphqls               # SDL: Tenant, LineItem, TenantSummary; queries + mutation
 src/main/resources/schemas/
