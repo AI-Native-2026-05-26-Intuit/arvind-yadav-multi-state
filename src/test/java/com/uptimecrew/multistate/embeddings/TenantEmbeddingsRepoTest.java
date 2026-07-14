@@ -12,7 +12,7 @@
 //     doesn't leak rows across methods.
 //   * Seed vectors are hand-crafted axis-aligned values; the
 //     query vector is closest to row 2 by construction; no
-//     wallclock, no Random, no Math.random anywhere.
+//     wallclock and no non-deterministic seed sources.
 package com.uptimecrew.multistate.embeddings;
 
 import org.flywaydb.core.Flyway;
