@@ -127,7 +127,11 @@ dependencies {
     testImplementation 'org.springframework.kafka:spring-kafka-test'
     testImplementation 'org.testcontainers:kafka:1.20.4'
     testImplementation 'org.awaitility:awaitility:4.2.2'
+    // Flyway 10 split DB dialects out of flyway-core; without the
+    // postgresql module TenantEmbeddingsRepoTest fails at @BeforeAll with
+    // "No database found to handle jdbc:postgresql://..."
     testImplementation 'org.flywaydb:flyway-core:10.20.1'
+    testImplementation 'org.flywaydb:flyway-database-postgresql:10.20.1'
 
     // Spring Boot 3.3 already manages spring-kafka; the explicit Spring AI MCP
     // starter version is required because Spring AI is not in the Boot BOM.

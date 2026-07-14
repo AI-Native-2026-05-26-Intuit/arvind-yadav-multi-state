@@ -12,7 +12,7 @@
 //     doesn't leak rows across methods.
 //   * Seed vectors are hand-crafted axis-aligned values; the
 //     query vector is closest to row 2 by construction; no
-//     wallclock, no Random, no Math.random anywhere.
+//     wallclock and no non-deterministic seed sources.
 package com.uptimecrew.multistate.embeddings;
 
 import org.flywaydb.core.Flyway;
@@ -49,15 +49,29 @@ final class TenantEmbeddingsRepoTest {
             .withReuse(true);
 
     @BeforeAll
-    static void migrate() {
+    static void migrate() throws Exception {
         // Runs the same Flyway migrations the production stack runs
         // against RDS -- drift between test and production is
         // impossible because the schema source is one file.
-        Flyway.configure()
-              .dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
-              .locations("classpath:db/migration")
-              .load()
-              .migrate();
+        //
+        // Retry the first JDBC connect: under Rancher Desktop the published
+        // port can briefly refuse before the PG postmaster accepts traffic
+        // even after Testcontainers marks the container started.
+        Exception last = null;
+        for (int attempt = 1; attempt <= 10; attempt++) {
+            try {
+                Flyway.configure()
+                      .dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+                      .locations("classpath:db/migration")
+                      .load()
+                      .migrate();
+                return;
+            } catch (Exception ex) {
+                last = ex;
+                Thread.sleep(500L * attempt);
+            }
+        }
+        throw last;
     }
 
     @BeforeEach
@@ -77,19 +91,19 @@ final class TenantEmbeddingsRepoTest {
         try (Connection c = DriverManager.getConnection(
                 DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())) {
 
-            // Seed three deterministic vectors. The query vector
-            // [0.95, 0.05, 0, ...] is closest to row 2 by
-            // construction (cosine distance is minimized for the
-            // most-aligned vector pair).
+            // Seed three deterministic vectors. Cosine distance prefers
+            // alignment of direction (not L2 proximity). Query is mostly
+            // along axis 1, so row 2 ([0.2, 0.98, ...]) beats the pure
+            // axis-0 unit vector of row 1.
             try (PreparedStatement ps = c.prepareStatement(
                 "INSERT INTO tenant_embeddings(id, tenant_id, embedding) "
               + "VALUES (?, 'tenant-a', ?::vector)")) {
                 insert(ps, "00000000-0000-0000-0000-000000000001",
                        axisAlignedUnit(0));        // [1, 0, 0, ...]
                 insert(ps, "00000000-0000-0000-0000-000000000002",
-                       slightlyOffAxis());          // [0.9, 0.1, 0, ...]
+                       slightlyOffAxis());          // [0.2, 0.98, 0, ...]
                 insert(ps, "00000000-0000-0000-0000-000000000003",
-                       axisAlignedUnit(1));         // [0, 1, 0, ...]
+                       axisAlignedUnit(2));         // [0, 0, 1, ...]
             }
 
             try (PreparedStatement ps = c.prepareStatement(
@@ -122,15 +136,16 @@ final class TenantEmbeddingsRepoTest {
     }
 
     private static String slightlyOffAxis() {
-        // [0.9, 0.1, 0, 0, ...]
-        StringBuilder sb = new StringBuilder("[0.9,0.1");
+        // Predominantly axis-1: [0.2, 0.98, 0, 0, ...]
+        StringBuilder sb = new StringBuilder("[0.2,0.98");
         for (int i = 2; i < 1024; i++) sb.append(",0");
         return sb.append(']').toString();
     }
 
     private static String queryNearRow2() {
-        // [0.95, 0.05, 0, 0, ...]
-        StringBuilder sb = new StringBuilder("[0.95,0.05");
+        // Closer to row 2 than to the pure axis-0 unit vector:
+        // [0.15, 0.99, 0, 0, ...]
+        StringBuilder sb = new StringBuilder("[0.15,0.99");
         for (int i = 2; i < 1024; i++) sb.append(",0");
         return sb.append(']').toString();
     }
