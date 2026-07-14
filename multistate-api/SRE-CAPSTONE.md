@@ -61,20 +61,71 @@ Tempo into X-Ray and lands on the same trace.
 
 ## Integration spike (Friday lab)
 
-Run: `COUNT=4000 ./scripts/spike-runner.sh`
+Run: `COUNT=4000 ./scripts/spike-runner.sh` (batched SendMessageBatch).
 
-Expected timeline (paste actuals into PR after run):
+### Actual run — 2026-07-14 (account `279566174801`, queue `multistate-nexus-jobs-dev`)
 
-- T+00:00 — Spike script started.
-- T+00:30 — KEDA observed depth > 10/pod; scaled worker from 0 to 8 pods.
-- T+02:00 — Worker peaked at ~22 pods; HPA scaled API replicas on sustained k6 load.
-- T+05:00 — Queue draining; KEDA cooldown began.
-- T+10:00 — Worker back to 0; cost SLI returned to baseline.
+| Marker | UTC | Observation |
+|--------|-----|-------------|
+| T+00:00 | 08:06:50Z | Spike started. Pre-spike visible depth **2487**. |
+| T+00:55 | 08:07:45Z≈ | `posted 250 / 4000` |
+| T+04:00 | 08:10:50Z≈ | `posted 1000 / 4000` |
+| T+08:00 | 08:14:50Z≈ | `posted 2000 / 4000` |
+| T+11:00 | 08:17:50Z≈ | `posted 3000 / 4000` |
+| T+14:33 | 08:21:23Z | Spike **exit 0**. Post-spike visible depth **6387** (Δ ≈ +3900). |
+| KEDA target | — | At `queueLength: "10"`, depth 6387 ⇒ `ceil(6387/10)=639` ideal → **capped at `maxReplicaCount: 28`**. |
 
-During the spike, open X-Ray console and Tempo dashboard;
-confirm both show the same traceId for sampled traces
-(reservoir 10/s + 5% fixed rate). Screenshot one trace
-in each tool showing the same traceId — attach to PR.
+```text
+$ COUNT=4000 ./scripts/spike-runner.sh
+Posting 4000 synthetic events to .../multistate-nexus-jobs-dev
+  posted 250 / 4000
+  ...
+  posted 4000 / 4000
+Spike posted.   # exit 0 at 2026-07-14T08:21:23Z
+
+$ aws sqs get-queue-attributes ... ApproximateNumberOfMessages
+pre:  2487
+post: 6387
+```
+
+### Scaler / node observation (local `k3d-multistate-dev`)
+
+KEDA Helm chart was installed and CRDs (`scaledobjects.keda.sh`) are present, but the operator
+pods stay in **ImagePullBackOff** (`ghcr.io` TLS MITM inside the k3d nodes —
+`x509: certificate signed by unknown authority`). Without a healthy
+`keda-operator`, ScaledObject reconciliation and worker 0→28 scale-out could
+not be observed on this laptop cluster.
+
+Karpenter NodePool cannot provision EC2 nodes on k3d (no EC2NodeClass /
+cloud controller). HPA API replica growth was not exercised by this SQS-only
+spike (HPA targets `multistate_inflight_requests` on the API Deployment;
+pair with the k6 load gate for that signal).
+
+### X-Ray sampling rule (live)
+
+`multistate-observability-dev` is **CREATE_COMPLETE**:
+
+```text
+$ aws xray get-sampling-rules --region us-east-1 \
+    --query 'SamplingRuleRecords[?SamplingRule.RuleName==`multistate-api-default`].SamplingRule.[RuleName,ReservoirSize,FixedRate,ServiceName]' \
+    --output text
+multistate-api-default	10	0.05	multistate-api
+```
+
+### X-Ray + Tempo same-traceId screenshot
+
+**Blocked on this environment:** `aws xray get-trace-summaries` for
+`service("multistate-api")` returned **0** traces in the last 24h. Local k3d
+has no Tempo / ADOT dual-exporter Running (ADOT image pull + IRSA role
+`adot-collector-xray-write` need the cohort EKS path). Until ADOT is
+exporting OTLP→Tempo **and** awsxray, there is no shared 16-byte traceId to
+screenshot in both UIs.
+
+**Unblock checklist (ES / cohort cluster):**
+
+1. Sync config-repo W6D5 manifests (ADOT collector + KEDA ScaledObject) via Argo CD on a cluster that can pull `ghcr.io` / ECR and assume IRSA.
+2. Confirm `kubectl -n multistate-dev logs -l app=adot-collector` shows `Exporters: [otlphttp/tempo awsxray]`.
+3. Hit `GET /tenants/tnt_synth_001` once; copy `traceId` from Tempo Explore; paste into X-Ray console → screenshot pair for the PR.
 
 ## loadtest-author Skill audit (W6 D5 Task 4)
 
