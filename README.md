@@ -172,6 +172,8 @@ aws ecr describe-images \
 
 **Week 6 Day 4:** LLM cost observability — Bedrock IRSA, per-request EMF cost metrics, pgvector embeddings, and the monthly budget alarm. Full reference: [multistate-api/COST.md](multistate-api/COST.md). Infrastructure stacks (including `multistate-cost-dev`): [multistate-api/INFRA.md](multistate-api/INFRA.md).
 
+**Week 6 Day 5:** SRE capstone — KEDA worker scaling, SLO-derived HPA, Karpenter mixed NodePool, ADOT dual-export tracing, k6 load gate, integration spike. Full reference: [multistate-api/SRE-CAPSTONE.md](multistate-api/SRE-CAPSTONE.md).
+
 ## Build & test
 
 ```bash

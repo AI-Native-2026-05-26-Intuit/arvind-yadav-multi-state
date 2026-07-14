@@ -135,11 +135,17 @@ jobs:
       - name: Observability smoke (actuator fallback without PLG stack)
         env:
           OBS_SMOKE_REQUIRE_PLG: "false"
-          OBS_SMOKE_WAIT_SEC: "30"
+          # Match script default; the previous 30s window was flaky under
+          # concurrent PR workflows (curl 28 / missing log line races).
+          OBS_SMOKE_WAIT_SEC: "45"
         run: |
-          # Single replica avoids load-balancer splitting logs/metrics across pods.
+          # Mirror k8s-ci stability: wait for kafka, kill any leftover HPA,
+          # scale to one replica and settle before the metric/log round-trip.
+          kubectl wait --for=condition=available deployment/kafka -n multistate-dev --timeout=180s || true
+          kubectl delete hpa/multistate-api -n multistate-dev --ignore-not-found
           kubectl scale deploy/multistate-api -n multistate-dev --replicas=1
-          kubectl rollout status deploy/multistate-api -n multistate-dev --timeout=3m
+          kubectl rollout status deploy/multistate-api -n multistate-dev --timeout=5m
+          sleep 10
           chmod +x scripts/observability-smoke.sh
           ./scripts/observability-smoke.sh
 

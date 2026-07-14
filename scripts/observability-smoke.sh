@@ -63,14 +63,14 @@ tempo_search() {
 
 assert_actuator_metric() {
   local attempt snippet
-  for attempt in $(seq 1 6); do
+  for attempt in $(seq 1 12); do
     if run_curl_pod "obs-smoke-prom-${POD_SUFFIX}-${attempt}" \
         "curl --connect-timeout 15 --max-time 120 --silent --show-error --fail '${PROM_URL}' \
           | grep -qE 'multistate_nexus_evaluations(_total)?'"; then
       echo "  found nexus evaluation metric on /actuator/prometheus (attempt ${attempt})"
       return 0
     fi
-    echo "  metric not visible yet (attempt ${attempt}/6); retrying in 5s..."
+    echo "  metric not visible yet (attempt ${attempt}/12); retrying in 5s..."
     sleep 5
   done
   echo "ERROR: /actuator/prometheus missing multistate_nexus_evaluations metric" >&2
@@ -88,7 +88,7 @@ assert_actuator_metric() {
 
 assert_pod_log_line() {
   local attempt hits
-  for attempt in $(seq 1 6); do
+  for attempt in $(seq 1 12); do
   # Deployment has multiple replicas; aggregate logs from every ready pod.
   # Use --since (not --tail) so health-probe DEBUG lines cannot push out the
   # single smoke INFO line when security logging is verbose.
@@ -101,7 +101,7 @@ assert_pod_log_line() {
       echo "  found correlationId + lookup attempted in pod logs (attempt ${attempt})"
       return 0
     fi
-    echo "  log line not visible yet (attempt ${attempt}/6); retrying in 5s..."
+    echo "  log line not visible yet (attempt ${attempt}/12); retrying in 5s..."
     sleep 5
   done
   echo "ERROR: no pod log with correlationId=${CORR_ID} and lookup attempted" >&2
@@ -113,11 +113,24 @@ assert_pod_log_line() {
 }
 
 echo "[1/4] request with correlation id ${CORR_ID}"
-run_curl_pod "obs-smoke-curl-${POD_SUFFIX}" \
-  "code=\$(curl --connect-timeout 15 --max-time 60 --silent --show-error --output /dev/null --write-out '%{http_code}' \
-    -H 'x-correlation-id: ${CORR_ID}' '${URL}'); \
-   echo HTTP \${code}; \
-   test \"\${code}\" = '200' -o \"\${code}\" = '404'"
+# Retry the initial request (curl exit 28 / empty upstream after scale-down).
+smoke_req_ok=0
+for attempt in $(seq 1 12); do
+  if run_curl_pod "obs-smoke-curl-${POD_SUFFIX}-${attempt}" \
+      "code=\$(curl --connect-timeout 15 --max-time 60 --silent --show-error --output /dev/null --write-out '%{http_code}' \
+        -H 'x-correlation-id: ${CORR_ID}' '${URL}'); \
+       echo HTTP \${code}; \
+       test \"\${code}\" = '200' -o \"\${code}\" = '404'"; then
+    smoke_req_ok=1
+    break
+  fi
+  echo "  smoke request not ready yet (attempt ${attempt}/12); retrying in 5s..."
+  sleep 5
+done
+if [ "${smoke_req_ok}" -ne 1 ]; then
+  echo "ERROR: smoke request never returned HTTP 200/404" >&2
+  exit 1
+fi
 
 echo "[2/4] waiting ${WAIT_SEC}s for scrape / ingest"
 sleep "${WAIT_SEC}"
