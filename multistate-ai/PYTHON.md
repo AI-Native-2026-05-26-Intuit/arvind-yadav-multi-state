@@ -87,7 +87,6 @@ uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
 `MULTISTATE_AI_PG_DSN` feeds `dsn_from_env()` / `retrieve_chunks_from_env()` for
 production-like runs; pytest and the LangSmith assert script fall back to
 Testcontainers when that env var is unset.
-calls; a dummy URL is fine during day-to-day pytest.
 
 Local Rancher Desktop note: set `TESTCONTAINERS_RYUK_DISABLED=true` (already
 defaulted in `tests/conftest.py`) so Ryuk does not try to mount
