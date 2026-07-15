@@ -115,9 +115,7 @@ def test_ragas_baseline_thresholds() -> None:
         "MULTISTATE_AI_ANTHROPIC_API_KEY"
     ):
         pytest.skip("ANTHROPIC_API_KEY required for RAGAS evaluator")
-    if "ANTHROPIC_API_KEY" not in os.environ and os.environ.get(
-        "MULTISTATE_AI_ANTHROPIC_API_KEY"
-    ):
+    if "ANTHROPIC_API_KEY" not in os.environ and os.environ.get("MULTISTATE_AI_ANTHROPIC_API_KEY"):
         os.environ["ANTHROPIC_API_KEY"] = os.environ["MULTISTATE_AI_ANTHROPIC_API_KEY"]
 
     scores = _run_eval()
@@ -142,8 +140,7 @@ def test_golden_set_has_fifty_rows_and_failure_modes() -> None:
         "missing-context failure mode absent"
     )
     assert any(
-        any("cafeteria" in c or "Wi-Fi" in c for c in cast(list[str], r["contexts"]))
-        for r in rows
+        any("cafeteria" in c or "Wi-Fi" in c for c in cast(list[str], r["contexts"])) for r in rows
     ), "junk-context failure mode absent"
     assert any(len(cast(list[str], r["contexts"])) >= 3 for r in rows), (
         "near-duplicate failure mode absent"
