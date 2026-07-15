@@ -179,7 +179,7 @@ aws ecr describe-images \
 - **uv project + CLI.** [multistate-ai/pyproject.toml](multistate-ai/pyproject.toml) pins `requires-python = ">=3.12"`, separates runtime deps from `[dependency-groups] dev`, and commits [multistate-ai/uv.lock](multistate-ai/uv.lock). Package code lives under `src/multistate_ai/`; [cli.py](multistate-ai/src/multistate_ai/cli.py) is the only module allowed to call `print()`.
 - **Pydantic boundary.** [models.py](multistate-ai/src/multistate_ai/models.py) defines `Tenant`, `NexusReviewRequest`, `NexusReviewResult` with `extra="forbid"`, `frozen=True`, camelCase aliases, `Decimal` money, and field/model validators. [value_types.py](multistate-ai/src/multistate_ai/value_types.py) holds frozen `slots=True` dataclasses with tuple collections. Round-trip contract: [tests/fixtures/tenant_java.json](multistate-ai/tests/fixtures/tenant_java.json) + [test_models.py](multistate-ai/tests/test_models.py).
 - **httpx client + settings.** [settings.py](multistate-ai/src/multistate_ai/settings.py) is 12-factor config (`MULTISTATE_AI_*`, `secrets_dir="/run/secrets"`). [client.py](multistate-ai/src/multistate_ai/client.py) retries only transient failures via `_is_retryable()`; API key reaches the wire only through `SecretStr.get_secret_value()`.
-- **CI gate.** [`.github/workflows/python-ci.yml`](.github/workflows/python-ci.yml) is path-scoped to `multistate-ai/**` on `ubuntu-24.04`: `uv sync --frozen → ruff → mypy --strict → pytest --cov-fail-under=85`.
+- **CI gate.** [`.github/workflows/python-ci.yml`](.github/workflows/python-ci.yml) is path-scoped to `multistate-ai/**` on `ubuntu-24.04`: `uv sync --frozen → ruff → mypy --strict → pytest -m 'not slow' --cov-fail-under=85`, then GX / RAGAS / LangSmith run-visibility steps.
 
 **Week 7 Day 2:** extended the sidecar with Pandas + MiniLM embeddings (`corpus.py`), idempotent pgvector loading + HNSW (`sql/V001__doc_chunks.sql`, `pgvector_loader.py`), `@traceable` ANN retrieval (`rag.py`), a 50-row RAGAS golden set, a Great Expectations `doc_chunks_v1` suite via Testcontainers, and three new `python-ci` steps (GX / RAGAS / LangSmith run visibility) that read `secrets.MULTISTATE_AI_*` into project `multistate-ai-dev-ci`. Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md). New scaffold transcripts: [multistate-ai/PROMPT_JOURNAL.md](multistate-ai/PROMPT_JOURNAL.md).
 
@@ -371,13 +371,15 @@ Versions for the Spring Boot starters are managed by the Boot BOM (`io.spring.de
 ## Project layout
 
 ```
-multistate-ai/                    # W7 D1 Python sidecar (uv + Pydantic + httpx)
-    pyproject.toml                # requires-python >=3.12; [dependency-groups] dev
+multistate-ai/                    # W7 D1–D2 Python sidecar (uv + Pydantic + RAG stack)
+    pyproject.toml                # requires-python >=3.12; runtime + [dependency-groups] dev
     uv.lock                       # committed; CI uses --frozen
-    PYTHON.md                     # purpose, run commands, AI deviations
+    PYTHON.md                     # purpose, run commands, AI deviations (W7 D1+D2)
     PROMPT_JOURNAL.md             # unedited Claude scaffold transcripts
-    src/multistate_ai/            # models, settings, client, cli, value_types
-    tests/                        # pytest suite + fixtures/tenant_java.json
+    sql/V001__doc_chunks.sql      # pgvector doc_chunks + HNSW (W7 D2)
+    src/multistate_ai/            # models, settings, client, cli, corpus, pgvector_loader, rag
+    src/multistate_ai/scripts/    # assert_langsmith_run_visible (SaaS gate)
+    tests/                        # pytest + fixtures + golden/multistate_golden_50.jsonl
 src/main/java/com/uptimecrew/multistate/
     Application.java  # Spring Boot entry point (@SpringBootApplication, @EnableScheduling)
     api/              # @RestController endpoints (TenantController, TenantObservabilityController)
@@ -442,7 +444,7 @@ infra/oidc/
         k8s-ci.yml                       # kubeconform + k3d deploy smoke
         serverless.yml                   # SAM validate/build/test + main OIDC deploy
         web-ci.yml                       # multistate-web pnpm check (path-filtered PRs)
-        python-ci.yml                    # multistate-ai uv+ruff+mypy+pytest (path-filtered PRs)
+        python-ci.yml                    # multistate-ai uv+ruff+mypy+pytest+GX+RAGAS+LangSmith
 src/main/resources/graphql/
     schema.graphqls               # SDL: Tenant, LineItem, TenantSummary; queries + mutation
 src/main/resources/schemas/
