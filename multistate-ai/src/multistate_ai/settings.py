@@ -12,7 +12,9 @@ class MultistateAiSettings(BaseSettings):  # type: ignore[explicit-any]  # Pydan
         env_file=".env",
         env_file_encoding="utf-8",
         secrets_dir="/run/secrets",
-        extra="forbid",
+        # ignore: the same .env also holds unprefixed LANGSMITH_* / ANTHROPIC_* for
+        # the LangSmith SDK and RAGAS (W7 D2); those must not hard-fail settings load.
+        extra="ignore",
         frozen=True,
     )
 

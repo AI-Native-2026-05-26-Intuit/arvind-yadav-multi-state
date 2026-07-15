@@ -81,9 +81,20 @@ uv run pytest -v tests/test_great_expectations_suite.py
 uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
 ```
 
+**Postgres:** you do **not** need a local Postgres for W7 D2 tests.  
+`tests/test_pgvector_loader.py`, `test_great_expectations_suite.py`, and
+`assert_langsmith_run_visible` spin `pgvector/pgvector:pg16` via Testcontainers.
+`MULTISTATE_AI_PG_DSN` in `.env` is only for optional manual `dsn_from_env()`
+calls; a dummy URL is fine during day-to-day pytest.
+
 Local Rancher Desktop note: set `TESTCONTAINERS_RYUK_DISABLED=true` (already
 defaulted in `tests/conftest.py`) so Ryuk does not try to mount
-`~/.rd/docker.sock`.
+`~/.rd/docker.sock`. On macOS with corp TLS, export `SSL_CERT_FILE=/etc/ssl/cert.pem`
+(and `REQUESTS_CA_BUNDLE`) before LangSmith / Anthropic SaaS calls.
+
+RAGAS evaluator uses Anthropic (`ChatAnthropic`) plus local MiniLM embeddings so
+CI only needs `ANTHROPIC_API_KEY` / `secrets.MULTISTATE_AI_ANTHROPIC_API_KEY`
+(no OpenAI key).
 
 ## AI authoring discipline (W7 D2 additions)
 

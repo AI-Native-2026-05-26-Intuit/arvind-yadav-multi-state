@@ -29,6 +29,8 @@ dev = [
     "great-expectations>=0.18",
     "testcontainers[postgres]>=4.7",
     "pandas-stubs>=2.2",
+    "langchain-anthropic>=0.3",
+    "anthropic>=0.39",
 ]
 
 [tool.uv]

@@ -8,12 +8,16 @@ from pathlib import Path
 
 import pytest
 from datasets import Dataset
+from langchain_anthropic import ChatAnthropic
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from multistate_ai.ragas_shims import install_ragas_import_shims
 
 install_ragas_import_shims()
 
 from ragas import evaluate  # noqa: E402
+from ragas.embeddings import LangchainEmbeddingsWrapper  # noqa: E402
+from ragas.llms import LangchainLLMWrapper  # noqa: E402
 from ragas.metrics import (  # noqa: E402
     answer_relevancy,
     context_precision,
@@ -22,6 +26,8 @@ from ragas.metrics import (  # noqa: E402
 )
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "multistate_golden_50.jsonl"
+# Cheap evaluator for CI budgets; assignment supplies ANTHROPIC_API_KEY via secrets.
+_EVAL_MODEL = os.environ.get("MULTISTATE_AI_RAGAS_MODEL", "claude-3-5-haiku-latest")
 
 
 def _load_golden() -> Dataset:
@@ -31,10 +37,42 @@ def _load_golden() -> Dataset:
     return Dataset.from_list(rows)
 
 
+def _anthropic_llm() -> LangchainLLMWrapper:
+    api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get(
+        "MULTISTATE_AI_ANTHROPIC_API_KEY"
+    )
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY required for RAGAS evaluator")
+    # ChatAnthropic stubs vary by version; construct via kwargs dict for mypy.
+    chat = ChatAnthropic(  # type: ignore[call-arg]
+        model_name=_EVAL_MODEL,
+        anthropic_api_key=api_key,
+        temperature=0,
+    )
+    return LangchainLLMWrapper(chat)
+
+
+def _local_embeddings() -> LangchainEmbeddingsWrapper:
+    # answer_relevancy needs embeddings; use the same MiniLM already in the sidecar
+    # so CI does not require OPENAI_API_KEY.
+    emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return LangchainEmbeddingsWrapper(emb)
+
+
 def _run_eval() -> dict[str, float]:
+    llm = _anthropic_llm()
+    embeddings = _local_embeddings()
     result = evaluate(
         _load_golden(),
         metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
+        llm=llm,
+        embeddings=embeddings,
+        column_map={
+            "question": "question",
+            "answer": "answer",
+            "contexts": "contexts",
+            "ground_truth": "ground_truth",
+        },
     )
     scores: dict[str, float] = {}
     if hasattr(result, "to_pandas"):

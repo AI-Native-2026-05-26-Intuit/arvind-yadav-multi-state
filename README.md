@@ -208,13 +208,18 @@ sam local invoke TenantLookupFunction --event events/get-tenant.json --env-vars 
 
 ```bash
 cd multistate-ai
+cp .env.example .env   # fill LANGSMITH_* + ANTHROPIC_* (never commit .env)
 uv sync --frozen            # install lockfile into .venv
 uv run ruff check
 uv run ruff format --check
 uv run mypy src/ tests/
+# Local Postgres is NOT required for unit/GX/loader tests — Testcontainers
+# spins pgvector/pgvector:pg16. MULTISTATE_AI_PG_DSN is only for manual DSN use.
+export TESTCONTAINERS_RYUK_DISABLED=true   # needed on Rancher Desktop
+export SSL_CERT_FILE=/etc/ssl/cert.pem     # macOS corp TLS for LangSmith/Anthropic
 uv run pytest -v -m 'not slow' --cov=src --cov-fail-under=85
 uv run pytest -v tests/test_great_expectations_suite.py
-# Optional SaaS / LLM gates (need secrets in env):
+# Optional SaaS / LLM gates (need keys in env):
 # uv run pytest -v -k test_ragas_baseline_thresholds
 # uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
 uv run python src/multistate_ai/cli.py tests/fixtures/sample_request.json
