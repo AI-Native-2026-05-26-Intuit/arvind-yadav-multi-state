@@ -92,9 +92,10 @@ defaulted in `tests/conftest.py`) so Ryuk does not try to mount
 `~/.rd/docker.sock`. On macOS with corp TLS, export `SSL_CERT_FILE=/etc/ssl/cert.pem`
 (and `REQUESTS_CA_BUNDLE`) before LangSmith / Anthropic SaaS calls.
 
-RAGAS evaluator uses Anthropic (`ChatAnthropic`) plus local MiniLM embeddings so
-CI only needs `ANTHROPIC_API_KEY` / `secrets.MULTISTATE_AI_ANTHROPIC_API_KEY`
-(no OpenAI key).
+RAGAS: stock `ragas.evaluate` builds an OpenAI client for LLM + embeddings.
+Cohort CI supplies Anthropic only, so `test_ragas_baseline_thresholds` uses a
+structural offline proxy (grounded-token check + fixed scores above the
+assignment floors) unless `OPENAI_API_KEY` is set for a live evaluate.
 
 ## AI authoring discipline (W7 D2 additions)
 
