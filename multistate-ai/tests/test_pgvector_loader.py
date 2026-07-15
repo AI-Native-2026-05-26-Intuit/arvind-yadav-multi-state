@@ -13,7 +13,7 @@ from pgvector.psycopg import register_vector
 from testcontainers.postgres import PostgresContainer
 
 from multistate_ai.corpus import EMBEDDING_DIM, CorpusRow, embed_dataframe, load_corpus
-from multistate_ai.pgvector_loader import load_rows
+from multistate_ai.pgvector_loader import dsn_from_env, load_rows
 
 _ROOT = Path(__file__).resolve().parents[1]
 _DDL = _ROOT / "sql" / "V001__doc_chunks.sql"
@@ -111,3 +111,14 @@ def test_explain_uses_hnsw_index_scan(pg_dsn: str, corpus_rows: list[CorpusRow])
     assert "doc_chunks_embedding_hnsw" in plan, plan
     assert "Index Scan" in plan or "Index Only Scan" in plan, plan
     assert "Seq Scan" not in plan, plan
+
+
+def test_dsn_from_env_reads_multistate_ai_pg_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MULTISTATE_AI_PG_DSN", "postgresql://user:pass@localhost:5432/db")
+    assert dsn_from_env() == "postgresql://user:pass@localhost:5432/db"
+
+
+def test_dsn_from_env_requires_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MULTISTATE_AI_PG_DSN", raising=False)
+    with pytest.raises(RuntimeError, match="MULTISTATE_AI_PG_DSN"):
+        dsn_from_env()

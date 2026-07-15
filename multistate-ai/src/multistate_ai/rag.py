@@ -19,6 +19,7 @@ from pgvector.psycopg import register_vector
 from sentence_transformers import SentenceTransformer
 
 from .corpus import MODEL_NAME
+from .pgvector_loader import dsn_from_env
 
 _RETRIEVER_NAME: Final = "multistate_ai.retrieve_chunks"
 
@@ -49,6 +50,11 @@ def retrieve_chunks(
     The @traceable decorator captures inputs, outputs, latency, and the
     span hierarchy in the LangSmith project named by LANGSMITH_PROJECT.
     """
+    if k <= 0:
+        raise ValueError("k must be > 0")
+    if not question.strip():
+        raise ValueError("question must be non-empty")
+
     _require_langsmith_api_key()
     q_vec: NDArray[np.float32] = (
         _embedding_model()
@@ -79,3 +85,19 @@ def retrieve_chunks(
                 }
                 for r in cur.fetchall()
             ]
+
+
+def retrieve_chunks_from_env(
+    question: str,
+    k: int = 5,
+    tenant_id: str = "tenant-a",
+    model_version: str = MODEL_NAME,
+) -> list[dict[str, object]]:
+    """Production helper: resolve ``MULTISTATE_AI_PG_DSN`` then retrieve."""
+    return retrieve_chunks(
+        dsn_from_env(),
+        question,
+        k=k,
+        tenant_id=tenant_id,
+        model_version=model_version,
+    )

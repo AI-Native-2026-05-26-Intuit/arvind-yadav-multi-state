@@ -21,7 +21,7 @@ from testcontainers.postgres import PostgresContainer
 
 from multistate_ai.corpus import EMBEDDING_DIM, MODEL_NAME, CorpusRow, embed_dataframe, load_corpus
 from multistate_ai.pgvector_loader import load_rows
-from multistate_ai.rag import retrieve_chunks
+from multistate_ai.rag import retrieve_chunks, retrieve_chunks_from_env
 
 _ROOT = Path(__file__).resolve().parents[3]  # multistate-ai/
 _DDL = _ROOT / "sql" / "V001__doc_chunks.sql"
@@ -102,11 +102,9 @@ def main() -> int:
 
     _install_fake_embedder()
 
-    with PostgresContainer("pgvector/pgvector:pg16") as pg:
-        dsn = _to_psycopg_dsn(pg.get_connection_url())
-        _seed(dsn)
-        hits = retrieve_chunks(
-            dsn,
+    # Prefer an explicit DSN when set (production-like); otherwise Testcontainers.
+    if os.environ.get("MULTISTATE_AI_PG_DSN"):
+        hits = retrieve_chunks_from_env(
             question="What dollar floor creates California economic nexus?",
             k=3,
             tenant_id="tenant-a",
@@ -114,6 +112,19 @@ def main() -> int:
         if not hits:
             print("retrieve_chunks returned zero hits; seed may be empty", file=sys.stderr)
             return 3
+    else:
+        with PostgresContainer("pgvector/pgvector:pg16") as pg:
+            dsn = _to_psycopg_dsn(pg.get_connection_url())
+            _seed(dsn)
+            hits = retrieve_chunks(
+                dsn,
+                question="What dollar floor creates California economic nexus?",
+                k=3,
+                tenant_id="tenant-a",
+            )
+            if not hits:
+                print("retrieve_chunks returned zero hits; seed may be empty", file=sys.stderr)
+                return 3
 
     time.sleep(5)
 

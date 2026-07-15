@@ -78,6 +78,8 @@ jobs:
           LANGSMITH_TRACING: "true"
           ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
           MULTISTATE_AI_ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
+          # Live Anthropic evaluator (retired 3.5 haiku IDs 404).
+          MULTISTATE_AI_RAGAS_MODEL: claude-haiku-4-5-20251001
           # Prefer HF cache hits across steps when available.
           HF_HUB_DISABLE_TELEMETRY: "1"
 

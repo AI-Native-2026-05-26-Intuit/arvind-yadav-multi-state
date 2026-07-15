@@ -37,4 +37,7 @@ def load_rows(dsn: str, rows: Iterable[CorpusRow]) -> int:
 
 def dsn_from_env() -> str:
     """Read PG DSN from env so secrets never appear in source."""
-    return os.environ["MULTISTATE_AI_PG_DSN"]
+    try:
+        return os.environ["MULTISTATE_AI_PG_DSN"]
+    except KeyError as exc:
+        raise RuntimeError("MULTISTATE_AI_PG_DSN must be set in env") from exc

@@ -84,7 +84,9 @@ uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
 **Postgres:** you do **not** need a local Postgres for W7 D2 tests.  
 `tests/test_pgvector_loader.py`, `test_great_expectations_suite.py`, and
 `assert_langsmith_run_visible` spin `pgvector/pgvector:pg16` via Testcontainers.
-`MULTISTATE_AI_PG_DSN` in `.env` is only for optional manual `dsn_from_env()`
+`MULTISTATE_AI_PG_DSN` feeds `dsn_from_env()` / `retrieve_chunks_from_env()` for
+production-like runs; pytest and the LangSmith assert script fall back to
+Testcontainers when that env var is unset.
 calls; a dummy URL is fine during day-to-day pytest.
 
 Local Rancher Desktop note: set `TESTCONTAINERS_RYUK_DISABLED=true` (already
@@ -92,10 +94,11 @@ defaulted in `tests/conftest.py`) so Ryuk does not try to mount
 `~/.rd/docker.sock`. On macOS with corp TLS, export `SSL_CERT_FILE=/etc/ssl/cert.pem`
 (and `REQUESTS_CA_BUNDLE`) before LangSmith / Anthropic SaaS calls.
 
-RAGAS: stock `ragas.evaluate` builds an OpenAI client for LLM + embeddings.
-Cohort CI supplies Anthropic only, so `test_ragas_baseline_thresholds` uses a
-structural offline proxy (grounded-token check + fixed scores above the
-assignment floors) unless `OPENAI_API_KEY` is set for a live evaluate.
+RAGAS: CI runs a real Anthropic-backed ``ragas.evaluate`` (``ChatAnthropic`` via
+``LangchainLLMWrapper`` + local MiniLM embeddings) so threshold floors reflect
+live metric scores — not a hardcoded offline proxy. Override the evaluator with
+``MULTISTATE_AI_RAGAS_MODEL`` (default ``claude-haiku-4-5-20251001``).
+
 
 ## AI authoring discipline (W7 D2 additions)
 
