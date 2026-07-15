@@ -27,7 +27,7 @@ def _load_golden_rows() -> list[GoldenRow]:
 
 
 def _to_ragas_dataset(rows: list[GoldenRow]) -> object:
-    from datasets import Dataset  # type: ignore[import-untyped]
+    from datasets import Dataset
 
     mapped = [
         {
@@ -86,7 +86,7 @@ def _run_eval(rows: list[GoldenRow]) -> dict[str, float]:
     )
     scores: dict[str, float] = {}
     for key in ("faithfulness", "answer_relevancy", "context_precision", "context_recall"):
-        value = cast(object, result[key])  # type: ignore[index]
+        value = cast(object, result[key])
         scores[key] = float(cast(str | float | int, value))
     return scores
 
