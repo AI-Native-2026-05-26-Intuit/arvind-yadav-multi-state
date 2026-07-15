@@ -12,6 +12,11 @@ from multistate_ai.settings import MultistateAiSettings
 # Rancher Desktop cannot mount ~/.rd/docker.sock into Ryuk; disable it for local + CI.
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
+# ragas still imports ChatVertexAI from langchain_community; the symbol was removed.
+from multistate_ai.ragas_shims import install_ragas_import_shims
+
+install_ragas_import_shims()
+
 
 @pytest.fixture
 def settings(monkeypatch: pytest.MonkeyPatch) -> MultistateAiSettings:

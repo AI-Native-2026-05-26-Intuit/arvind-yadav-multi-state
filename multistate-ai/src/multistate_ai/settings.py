@@ -27,3 +27,9 @@ class MultistateAiSettings(BaseSettings):  # type: ignore[explicit-any]  # Pydan
     )
     tenant_id: str = Field(min_length=1)
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARN|ERROR)$")
+
+    # W7 D2 — retrieval / eval credentials (optional locally; CI supplies via secrets.*)
+    langsmith_api_key: SecretStr | None = None
+    langsmith_project: str = Field(default="multistate-ai-dev", min_length=1)
+    pg_dsn: str | None = None
+    anthropic_api_key: SecretStr | None = None

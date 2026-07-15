@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 from numpy.typing import NDArray
 
 from multistate_ai.corpus import EMBEDDING_DIM, MODEL_NAME, CorpusRow, embed_dataframe, load_corpus
