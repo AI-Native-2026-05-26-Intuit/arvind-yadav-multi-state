@@ -49,6 +49,14 @@ warn_return_any = true
 warn_unused_ignores = true
 exclude = ["build/", "dist/"]
 
+[[tool.mypy.overrides]]
+module = [
+    "testcontainers.*",
+    "sentence_transformers.*",
+    "pgvector.*",
+]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

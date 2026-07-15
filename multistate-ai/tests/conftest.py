@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -7,6 +8,9 @@ import pytest
 
 from multistate_ai.models import NexusReviewRequest, Tenant
 from multistate_ai.settings import MultistateAiSettings
+
+# Rancher Desktop cannot mount ~/.rd/docker.sock into Ryuk; disable it for local + CI.
+os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 
 @pytest.fixture
