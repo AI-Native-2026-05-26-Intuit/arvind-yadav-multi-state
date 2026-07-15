@@ -26,7 +26,7 @@ jobs:
     name: uv sync + ruff + mypy + pytest + W7D2 gates
     runs-on: ubuntu-24.04
     # W7 D2 adds Testcontainers + optional LLM-backed RAGAS; keep headroom.
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: multistate-ai
@@ -71,12 +71,15 @@ jobs:
           LANGSMITH_TRACING: "true"
 
       - name: RAGAS golden-set thresholds
-        run: uv run pytest -v -k 'test_ragas_baseline_thresholds'
+        run: uv run pytest -v -k 'test_ragas_baseline_thresholds' --tb=short
         env:
           LANGSMITH_API_KEY: ${{ secrets.MULTISTATE_AI_LANGSMITH_API_KEY }}
           LANGSMITH_PROJECT: multistate-ai-dev-ci
           LANGSMITH_TRACING: "true"
           ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
+          MULTISTATE_AI_ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
+          # Prefer HF cache hits across steps when available.
+          HF_HUB_DISABLE_TELEMETRY: "1"
 
       - name: Assert LangSmith run uploaded for a sample request
         run: uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
