@@ -35,9 +35,8 @@ class _FakeMiniLM:
 
 
 def _to_psycopg_dsn(url: str) -> str:
-    return (
-        url.replace("postgresql+psycopg2://", "postgresql://")
-        .replace("postgresql+psycopg://", "postgresql://")
+    return url.replace("postgresql+psycopg2://", "postgresql://").replace(
+        "postgresql+psycopg://", "postgresql://"
     )
 
 
@@ -62,9 +61,7 @@ def test_retrieve_chunks_requires_langsmith_key(
         retrieve_chunks(pg_dsn, "What is Wayfair economic nexus?")
 
 
-def test_retrieve_chunks_returns_dict_rows(
-    pg_dsn: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_retrieve_chunks_returns_dict_rows(pg_dsn: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LANGSMITH_API_KEY", "key_synth_langsmith_test_not_real")
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
 

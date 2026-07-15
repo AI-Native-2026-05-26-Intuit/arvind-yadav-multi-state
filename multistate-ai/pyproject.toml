@@ -58,6 +58,8 @@ module = [
     "ragas.*",
     "datasets",
     "datasets.*",
+    "great_expectations",
+    "great_expectations.*",
 ]
 ignore_missing_imports = true
 

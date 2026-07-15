@@ -50,11 +50,15 @@ def retrieve_chunks(
     span hierarchy in the LangSmith project named by LANGSMITH_PROJECT.
     """
     _require_langsmith_api_key()
-    q_vec: NDArray[np.float32] = _embedding_model().encode(
-        [question],
-        normalize_embeddings=True,
-        convert_to_numpy=True,
-    ).astype(np.float32)[0]
+    q_vec: NDArray[np.float32] = (
+        _embedding_model()
+        .encode(
+            [question],
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
+        .astype(np.float32)[0]
+    )
     with psycopg.connect(dsn) as conn:
         register_vector(conn)
         with conn.cursor() as cur:

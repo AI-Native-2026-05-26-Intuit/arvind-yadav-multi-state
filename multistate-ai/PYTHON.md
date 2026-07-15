@@ -51,9 +51,62 @@ Deviations from Claude's output that we corrected:
    We send `content=request.model_dump_json(by_alias=True)` instead, avoiding
    `Any` entirely in `src/`.
 
+## What W7 D2 adds
+
+This sidecar gained the data-and-AI-observability stack today:
+
+* `src/multistate_ai/corpus.py` — Pandas corpus loader,
+  de-dup on `(doc_id, chunk_idx)`, `NDArray[np.float32]` discipline.
+* `src/multistate_ai/pgvector_loader.py` — psycopg v3 +
+  `register_vector`, `cur.executemany`, `ON CONFLICT DO UPDATE`
+  for idempotent retries.
+* `src/multistate_ai/rag.py` — `@traceable(run_type="retriever")`
+  on the ANN search call; LangSmith project `multistate-ai-dev`.
+* `sql/V001__doc_chunks.sql` — extended pgvector DDL with the
+  `model_version` column and the HNSW `vector_cosine_ops` index.
+* `tests/test_ragas_thresholds.py` — 50-row golden set;
+  RAGAS faithfulness/answer_relevancy/context_precision/context_recall
+  threshold assertions.
+* `tests/test_great_expectations_suite.py` — Testcontainers
+  Postgres + pgvector spin-up; GX checkpoint `doc_chunks_v1`
+  asserts column non-null + row count + length bounds.
+
+## How to run today's additions
+
+```bash
+uv sync                                 # picks up the eight new deps
+uv run pytest -v tests/test_corpus.py tests/test_pgvector_loader.py
+uv run pytest -v tests/test_ragas_thresholds.py          # needs ANTHROPIC_API_KEY
+uv run pytest -v tests/test_great_expectations_suite.py
+uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
+```
+
+Local Rancher Desktop note: set `TESTCONTAINERS_RYUK_DISABLED=true` (already
+defaulted in `tests/conftest.py`) so Ryuk does not try to mount
+`~/.rd/docker.sock`.
+
+## AI authoring discipline (W7 D2 additions)
+
+Claude scaffolded the first cut of `corpus.py`, `pgvector_loader.py`, and
+the GX suite. Concrete deviations from Claude's output that we corrected:
+
+1. **Rejected: `np.float64` embeddings.** Claude left MiniLM / fake-encode
+   vectors as float64. Downstream pgvector inserts and the assignment
+   boundary require `NDArray[np.float32]` via `.astype(np.float32)` in
+   `embed_dataframe`.
+
+2. **Rejected: insert without `register_vector(conn)`.** Claude's loader
+   called `executemany` directly; without `pgvector.psycopg.register_vector`
+   the embedding column silently lands as malformed bytes. We register
+   before every insert / ANN query.
+
+3. **Rejected: inline LangSmith personal API key in source.** Claude wired
+   `Client(api_key="…")` with a hardcoded personal token into the retriever
+   scaffold. We raise when `LANGSMITH_API_KEY` is missing and let the
+   LangSmith SDK read credentials exclusively from `os.environ` / CI
+   `secrets.*`.
+
 ## What this sidecar does NOT do (yet)
 
-- NumPy + Pandas analytics — W7 D2.
-- pgvector retrieval / RAG — W7 D3.
 - MCP server publishing — W7 D4.
 - LangGraph orchestration — W7 D5.

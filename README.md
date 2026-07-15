@@ -181,6 +181,8 @@ aws ecr describe-images \
 - **httpx client + settings.** [settings.py](multistate-ai/src/multistate_ai/settings.py) is 12-factor config (`MULTISTATE_AI_*`, `secrets_dir="/run/secrets"`). [client.py](multistate-ai/src/multistate_ai/client.py) retries only transient failures via `_is_retryable()`; API key reaches the wire only through `SecretStr.get_secret_value()`.
 - **CI gate.** [`.github/workflows/python-ci.yml`](.github/workflows/python-ci.yml) is path-scoped to `multistate-ai/**` on `ubuntu-24.04`: `uv sync --frozen → ruff → mypy --strict → pytest --cov-fail-under=85`.
 
+**Week 7 Day 2:** extended the sidecar with Pandas + MiniLM embeddings (`corpus.py`), idempotent pgvector loading + HNSW (`sql/V001__doc_chunks.sql`, `pgvector_loader.py`), `@traceable` ANN retrieval (`rag.py`), a 50-row RAGAS golden set, a Great Expectations `doc_chunks_v1` suite via Testcontainers, and three new `python-ci` steps (GX / RAGAS / LangSmith run visibility) that read `secrets.MULTISTATE_AI_*` into project `multistate-ai-dev-ci`. Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md). New scaffold transcripts: [multistate-ai/PROMPT_JOURNAL.md](multistate-ai/PROMPT_JOURNAL.md).
+
 ## Build & test
 
 ```bash
@@ -202,7 +204,7 @@ sam local invoke TenantLookupFunction --event events/get-tenant.json --env-vars 
 ./scripts/sam-smoke.sh      # post-deploy curl + CloudWatch REPORT check
 ```
 
-**Python sidecar (W7 D1):**
+**Python sidecar (W7 D1 + D2):**
 
 ```bash
 cd multistate-ai
@@ -210,7 +212,11 @@ uv sync --frozen            # install lockfile into .venv
 uv run ruff check
 uv run ruff format --check
 uv run mypy src/ tests/
-uv run pytest -v --cov=src --cov-fail-under=85
+uv run pytest -v -m 'not slow' --cov=src --cov-fail-under=85
+uv run pytest -v tests/test_great_expectations_suite.py
+# Optional SaaS / LLM gates (need secrets in env):
+# uv run pytest -v -k test_ragas_baseline_thresholds
+# uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
 uv run python src/multistate_ai/cli.py tests/fixtures/sample_request.json
 ```
 

@@ -37,9 +37,8 @@ class _FakeMiniLM:
 
 def _to_psycopg_dsn(url: str) -> str:
     """Testcontainers yields a SQLAlchemy-style URL; psycopg wants postgresql://."""
-    return (
-        url.replace("postgresql+psycopg2://", "postgresql://")
-        .replace("postgresql+psycopg://", "postgresql://")
+    return url.replace("postgresql+psycopg2://", "postgresql://").replace(
+        "postgresql+psycopg://", "postgresql://"
     )
 
 
