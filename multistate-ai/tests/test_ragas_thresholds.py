@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import math
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict, cast
 
 import pytest
 from langchain_anthropic import ChatAnthropic
 from langchain_core.embeddings import Embeddings
+from langchain_core.messages import HumanMessage
 from pydantic import SecretStr
 from sentence_transformers import SentenceTransformer
 
@@ -30,7 +32,7 @@ from ragas.metrics import (  # noqa: E402
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "multistate_golden_50.jsonl"
 # Anthropic retired claude-3-5-haiku-20241022 (404). Override via MULTISTATE_AI_RAGAS_MODEL.
-_EVAL_MODEL = os.environ.get("MULTISTATE_AI_RAGAS_MODEL", "claude-haiku-4-5-20251001")
+_EVAL_MODEL = os.environ.get("MULTISTATE_AI_RAGAS_MODEL", "claude-haiku-4-5-20251001").strip()
 
 
 class GoldenRow(TypedDict):
@@ -77,21 +79,68 @@ def _to_ragas_dataset(rows: list[GoldenRow]) -> object:
     return Dataset.from_list(mapped)
 
 
+def _normalize_anthropic_env() -> None:
+    """Strip secret whitespace and keep LangSmith out of the RAGAS metric path."""
+    for name in ("ANTHROPIC_API_KEY", "MULTISTATE_AI_ANTHROPIC_API_KEY"):
+        raw = os.environ.get(name)
+        if raw is not None:
+            os.environ[name] = raw.strip()
+    if not os.environ.get("ANTHROPIC_API_KEY") and os.environ.get(
+        "MULTISTATE_AI_ANTHROPIC_API_KEY"
+    ):
+        os.environ["ANTHROPIC_API_KEY"] = os.environ["MULTISTATE_AI_ANTHROPIC_API_KEY"]
+    # RAGAS uses LangChain; tracing every metric LLM call adds noise and can fail CI.
+    os.environ["LANGSMITH_TRACING"] = "false"
+
+
 def _anthropic_api_key() -> str | None:
-    return os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("MULTISTATE_AI_ANTHROPIC_API_KEY")
+    key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("MULTISTATE_AI_ANTHROPIC_API_KEY")
+    return key.strip() if key else None
 
 
-def _anthropic_llm() -> LangchainLLMWrapper:
+@lru_cache(maxsize=1)
+def _anthropic_chat() -> ChatAnthropic:
     api_key = _anthropic_api_key()
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY required for RAGAS evaluator")
-    chat = ChatAnthropic(  # type: ignore[call-arg]
+    return ChatAnthropic(  # type: ignore[call-arg]
         model=_EVAL_MODEL,
         api_key=SecretStr(api_key),
         temperature=0,
         max_tokens=1024,
+        max_retries=2,
     )
-    return LangchainLLMWrapper(chat)
+
+
+@lru_cache(maxsize=1)
+def _ragas_llm() -> LangchainLLMWrapper:
+    return LangchainLLMWrapper(_anthropic_chat())
+
+
+@lru_cache(maxsize=1)
+def _ragas_embeddings() -> LangchainEmbeddingsWrapper:
+    return LangchainEmbeddingsWrapper(_MiniLMEmbeddings())
+
+
+def _preflight_anthropic() -> None:
+    """Fail fast with the real Anthropic error instead of a 26-minute all-NaN run."""
+    try:
+        _anthropic_chat().invoke([HumanMessage(content="Reply with exactly: OK")])
+    except Exception as exc:
+        pytest.fail(
+            f"Anthropic preflight failed for model {_EVAL_MODEL!r}: {type(exc).__name__}: {exc}"
+        )
+
+
+def _smoke_ragas(rows: list[GoldenRow]) -> None:
+    """One-row wiring check before the full 50-row evaluate."""
+    evaluate(
+        _to_ragas_dataset(rows[:1]),
+        metrics=[faithfulness],
+        llm=_ragas_llm(),
+        embeddings=_ragas_embeddings(),
+        raise_exceptions=True,
+    )
 
 
 def _nanmean(values: list[float]) -> float:
@@ -106,8 +155,8 @@ def _run_eval(rows: list[GoldenRow]) -> dict[str, float]:
     result = evaluate(
         _to_ragas_dataset(rows),
         metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
-        llm=_anthropic_llm(),
-        embeddings=LangchainEmbeddingsWrapper(_MiniLMEmbeddings()),
+        llm=_ragas_llm(),
+        embeddings=_ragas_embeddings(),
         raise_exceptions=False,
     )
     scores: dict[str, float] = {}
@@ -124,21 +173,26 @@ def _run_eval(rows: list[GoldenRow]) -> dict[str, float]:
 @pytest.mark.slow
 def test_ragas_baseline_thresholds() -> None:
     # Floors recorded today (W7 D2); W7 D3+ tighten but never loosen.
+    _normalize_anthropic_env()
     if not _anthropic_api_key():
         pytest.skip("ANTHROPIC_API_KEY required for Anthropic-backed RAGAS evaluate")
-    if "ANTHROPIC_API_KEY" not in os.environ and os.environ.get("MULTISTATE_AI_ANTHROPIC_API_KEY"):
-        os.environ["ANTHROPIC_API_KEY"] = os.environ["MULTISTATE_AI_ANTHROPIC_API_KEY"]
 
     rows = _load_golden_rows()
     assert any(len(r["contexts"]) == 0 for r in rows)
     assert any(r["contexts"] and "cafeteria" in r["contexts"][0].lower() for r in rows)
     assert any(len(r["contexts"]) >= 3 for r in rows)
 
+    _preflight_anthropic()
+    _smoke_ragas(rows)
+
     scores = _run_eval(rows)
     # Guard against total LLM/metric collapse (all-NaN ⇒ auth/model/wiring failure).
     for metric in ("faithfulness", "answer_relevancy", "context_precision", "context_recall"):
         n = scores.get(f"{metric}_n", 0.0)
-        assert n >= 40, f"{metric} produced too few finite scores: {scores}"
+        assert n >= 40, (
+            f"{metric} produced too few finite scores: {scores}. "
+            f"Anthropic model={_EVAL_MODEL!r}; re-run preflight if the key/model changed."
+        )
 
     assert scores.get("faithfulness", 0.0) >= 0.80, scores
     assert scores.get("answer_relevancy", 0.0) >= 0.80, scores

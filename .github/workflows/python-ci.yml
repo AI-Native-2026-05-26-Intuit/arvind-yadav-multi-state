@@ -73,14 +73,12 @@ jobs:
       - name: RAGAS golden-set thresholds
         run: uv run pytest -v -k 'test_ragas_baseline_thresholds' --tb=short
         env:
-          LANGSMITH_API_KEY: ${{ secrets.MULTISTATE_AI_LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: multistate-ai-dev-ci
-          LANGSMITH_TRACING: "true"
           ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
           MULTISTATE_AI_ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
           # Live Anthropic evaluator (retired 3.5 haiku IDs 404).
           MULTISTATE_AI_RAGAS_MODEL: claude-haiku-4-5-20251001
-          # Prefer HF cache hits across steps when available.
+          # RAGAS uses LangChain directly; LangSmith tracing is validated in the next step.
+          LANGSMITH_TRACING: "false"
           HF_HUB_DISABLE_TELEMETRY: "1"
 
       - name: Assert LangSmith run uploaded for a sample request
