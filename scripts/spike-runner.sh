@@ -15,6 +15,11 @@ FEATURE="summarize-nexus"
 COUNT="${COUNT:-4000}"
 BATCH_SIZE=10
 
+if [[ ! "${COUNT}" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: COUNT must be a non-negative integer (got: ${COUNT})" >&2
+  exit 1
+fi
+
 echo "Posting ${COUNT} synthetic events to ${QUEUE_URL}"
 echo "tenant=${TENANT} feature=${FEATURE}"
 
