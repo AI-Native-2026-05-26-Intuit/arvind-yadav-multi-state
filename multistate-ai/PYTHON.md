@@ -94,9 +94,11 @@ defaulted in `tests/conftest.py`) so Ryuk does not try to mount
 (and `REQUESTS_CA_BUNDLE`) before LangSmith / Anthropic SaaS calls.
 
 RAGAS: CI runs a real Anthropic-backed ``ragas.evaluate`` (``ChatAnthropic`` via
-``LangchainLLMWrapper`` + local MiniLM embeddings) so threshold floors reflect
-live metric scores — not a hardcoded offline proxy. Override the evaluator with
-``MULTISTATE_AI_RAGAS_MODEL`` (default ``claude-haiku-4-5-20251001``).
+``LangchainLLMWrapper`` + local MiniLM embeddings) on a stratified ~10-row
+sample (all three failure modes + happy-path rows). The full 50-row structural
+gate runs without LLM calls. Quota exhaustion ``pytest.skip``s; wiring bugs
+``pytest.fail``. Set ``MULTISTATE_AI_RAGAS_FULL_EVAL=true`` locally for 50-row
+live eval. Override model via ``MULTISTATE_AI_RAGAS_MODEL``.
 
 
 ## AI authoring discipline (W7 D2 additions)

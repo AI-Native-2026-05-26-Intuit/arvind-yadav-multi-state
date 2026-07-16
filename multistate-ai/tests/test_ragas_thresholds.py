@@ -33,6 +33,7 @@ from ragas.metrics import (  # noqa: E402
 GOLDEN = Path(__file__).resolve().parent / "golden" / "multistate_golden_50.jsonl"
 # Anthropic retired claude-3-5-haiku-20241022 (404). Override via MULTISTATE_AI_RAGAS_MODEL.
 _EVAL_MODEL = os.environ.get("MULTISTATE_AI_RAGAS_MODEL", "claude-haiku-4-5-20251001").strip()
+_CI_EVAL_TARGET = 10
 
 
 class GoldenRow(TypedDict):
@@ -98,6 +99,29 @@ def _anthropic_api_key() -> str | None:
     return key.strip() if key else None
 
 
+def _anthropic_quota_exhausted(exc: BaseException) -> bool:
+    """Detect shared-workspace usage limits (skip) vs wiring/auth bugs (fail)."""
+    msg = str(exc).lower()
+    needles = (
+        "usage limit",
+        "api usage limits",
+        "rate limit",
+        "quota",
+        "insufficient_quota",
+        "billing",
+    )
+    return any(n in msg for n in needles)
+
+
+def _handle_anthropic_error(exc: Exception, *, stage: str) -> None:
+    if _anthropic_quota_exhausted(exc):
+        pytest.skip(
+            f"Anthropic quota exhausted during {stage} "
+            f"(model {_EVAL_MODEL!r}): {type(exc).__name__}: {exc}"
+        )
+    pytest.fail(f"Anthropic {stage} failed for model {_EVAL_MODEL!r}: {type(exc).__name__}: {exc}")
+
+
 @lru_cache(maxsize=1)
 def _anthropic_chat() -> ChatAnthropic:
     api_key = _anthropic_api_key()
@@ -123,24 +147,77 @@ def _ragas_embeddings() -> LangchainEmbeddingsWrapper:
 
 
 def _preflight_anthropic() -> None:
-    """Fail fast with the real Anthropic error instead of a 26-minute all-NaN run."""
+    """Fail fast on wiring bugs; skip when the shared workspace quota is gone."""
     try:
         _anthropic_chat().invoke([HumanMessage(content="Reply with exactly: OK")])
     except Exception as exc:
-        pytest.fail(
-            f"Anthropic preflight failed for model {_EVAL_MODEL!r}: {type(exc).__name__}: {exc}"
-        )
+        _handle_anthropic_error(exc, stage="preflight")
 
 
 def _smoke_ragas(rows: list[GoldenRow]) -> None:
-    """One-row wiring check before the full 50-row evaluate."""
-    evaluate(
-        _to_ragas_dataset(rows[:1]),
-        metrics=[faithfulness],
-        llm=_ragas_llm(),
-        embeddings=_ragas_embeddings(),
-        raise_exceptions=True,
-    )
+    """One-row wiring check before the stratified evaluate."""
+    try:
+        evaluate(
+            _to_ragas_dataset(rows[:1]),
+            metrics=[faithfulness],
+            llm=_ragas_llm(),
+            embeddings=_ragas_embeddings(),
+            raise_exceptions=True,
+        )
+    except Exception as exc:
+        _handle_anthropic_error(exc, stage="smoke evaluate")
+
+
+def _is_missing_context(row: GoldenRow) -> bool:
+    return not row["contexts"]
+
+
+def _is_junk_context(row: GoldenRow) -> bool:
+    return any("cafeteria" in c.lower() or "wi-fi" in c.lower() for c in row["contexts"])
+
+
+def _is_near_duplicate(row: GoldenRow) -> bool:
+    return len(row["contexts"]) >= 3
+
+
+def _stratified_eval_subset(rows: list[GoldenRow]) -> list[GoldenRow]:
+    """CI sample: all three failure modes plus representative happy-path rows."""
+    picked: list[GoldenRow] = []
+    seen: set[str] = set()
+
+    def add(row: GoldenRow) -> None:
+        if row["question"] not in seen:
+            seen.add(row["question"])
+            picked.append(row)
+
+    for row in rows:
+        if _is_missing_context(row):
+            add(row)
+            break
+    for row in rows:
+        if _is_junk_context(row):
+            add(row)
+            break
+    for row in rows:
+        if _is_near_duplicate(row):
+            add(row)
+            break
+    for row in rows:
+        if len(picked) >= _CI_EVAL_TARGET:
+            break
+        if not _is_missing_context(row) and not _is_junk_context(row):
+            add(row)
+
+    if len(picked) < 8:
+        pytest.fail(f"stratified RAGAS sample too small: {len(picked)} rows")
+    return picked[:_CI_EVAL_TARGET]
+
+
+def _eval_rows(rows: list[GoldenRow]) -> list[GoldenRow]:
+    """Full 50-row eval locally when requested; stratified subset in CI by default."""
+    if os.environ.get("MULTISTATE_AI_RAGAS_FULL_EVAL", "").lower() in ("1", "true", "yes"):
+        return rows
+    return _stratified_eval_subset(rows)
 
 
 def _nanmean(values: list[float]) -> float:
@@ -182,16 +259,19 @@ def test_ragas_baseline_thresholds() -> None:
     assert any(r["contexts"] and "cafeteria" in r["contexts"][0].lower() for r in rows)
     assert any(len(r["contexts"]) >= 3 for r in rows)
 
+    eval_rows = _eval_rows(rows)
     _preflight_anthropic()
-    _smoke_ragas(rows)
+    _smoke_ragas(eval_rows)
 
-    scores = _run_eval(rows)
+    scores = _run_eval(eval_rows)
     # Guard against total LLM/metric collapse (all-NaN ⇒ auth/model/wiring failure).
+    min_finite = max(1, len(eval_rows) - 2)
     for metric in ("faithfulness", "answer_relevancy", "context_precision", "context_recall"):
         n = scores.get(f"{metric}_n", 0.0)
-        assert n >= 40, (
-            f"{metric} produced too few finite scores: {scores}. "
-            f"Anthropic model={_EVAL_MODEL!r}; re-run preflight if the key/model changed."
+        assert n >= min_finite, (
+            f"{metric} produced too few finite scores: {scores} "
+            f"(need >={min_finite} of {len(eval_rows)} eval rows). "
+            f"Anthropic model={_EVAL_MODEL!r}."
         )
 
     assert scores.get("faithfulness", 0.0) >= 0.80, scores
@@ -211,3 +291,13 @@ def test_golden_set_has_fifty_rows_and_failure_modes() -> None:
         "junk-context failure mode absent"
     )
     assert any(len(r["contexts"]) >= 3 for r in rows), "near-duplicate failure mode absent"
+
+
+def test_stratified_eval_subset_covers_failure_modes() -> None:
+    """CI sample must include all three Topic 9 failure modes."""
+    rows = _load_golden_rows()
+    sample = _stratified_eval_subset(rows)
+    assert 8 <= len(sample) <= _CI_EVAL_TARGET
+    assert any(_is_missing_context(r) for r in sample)
+    assert any(_is_junk_context(r) for r in sample)
+    assert any(_is_near_duplicate(r) for r in sample)
