@@ -13,10 +13,11 @@ from pgvector.psycopg import register_vector
 from testcontainers.postgres import PostgresContainer
 
 from multistate_ai.corpus import EMBEDDING_DIM, CorpusRow, embed_dataframe, load_corpus
-from multistate_ai.pgvector_loader import dsn_from_env, load_rows
+from multistate_ai.pgvector_loader import content_hash, dsn_from_env, load_rows, rows_needing_embed
 
 _ROOT = Path(__file__).resolve().parents[1]
-_DDL = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V1 = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V2 = _ROOT / "sql" / "V002__rag2_metadata_and_partial_indexes.sql"
 _SEED = Path(__file__).parent / "fixtures" / "corpus_seed.jsonl"
 
 
@@ -42,15 +43,33 @@ def _to_psycopg_dsn(url: str) -> str:
     )
 
 
+def _apply_sql_file(dsn: str, path: Path) -> None:
+    """Apply a migration file statement-by-statement in autocommit.
+
+    ``CREATE INDEX CONCURRENTLY`` cannot run inside a transaction block.
+    Line comments are stripped before splitting so ``;`` inside comments
+    does not create bogus statement fragments.
+    """
+    cleaned_lines: list[str] = []
+    for line in path.read_text().splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("--"):
+            continue
+        cleaned_lines.append(line)
+    cleaned = "\n".join(cleaned_lines)
+    statements = [s.strip() for s in cleaned.split(";") if s.strip()]
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        for stmt in statements:
+            conn.execute(stmt)
+
+
 @pytest.fixture(scope="session")
 def pg_dsn() -> Iterator[str]:
-    """Spin pgvector/pgvector:pg16, apply Topic 7 DDL, yield a psycopg DSN."""
+    """Spin pgvector/pgvector:pg16, apply V001+V002 DDL, yield a psycopg DSN."""
     with PostgresContainer("pgvector/pgvector:pg16") as pg:
         dsn = _to_psycopg_dsn(pg.get_connection_url())
-        ddl = _DDL.read_text()
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            cur.execute(ddl)
-            conn.commit()
+        _apply_sql_file(dsn, _DDL_V1)
+        _apply_sql_file(dsn, _DDL_V2)
         yield dsn
 
 
@@ -122,3 +141,23 @@ def test_dsn_from_env_requires_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MULTISTATE_AI_PG_DSN", raising=False)
     with pytest.raises(RuntimeError, match="MULTISTATE_AI_PG_DSN"):
         dsn_from_env()
+
+
+def test_rows_needing_embed_skips_unchanged_content_hash(
+    pg_dsn: str, corpus_rows: list[CorpusRow]
+) -> None:
+    """Pre-embed gate: matching content_hash + model_version skips the model call."""
+    load_rows(pg_dsn, corpus_rows[:3])
+    candidates = [(r.doc_id, r.chunk_idx, r.chunk_text, r.model_version) for r in corpus_rows[:3]]
+    # Unchanged text → nothing pending (caller skips embed entirely).
+    assert rows_needing_embed(pg_dsn, candidates) == []
+
+    changed = (
+        corpus_rows[0].doc_id,
+        corpus_rows[0].chunk_idx,
+        corpus_rows[0].chunk_text + " amended for re-embed",
+        corpus_rows[0].model_version,
+    )
+    pending = rows_needing_embed(pg_dsn, [changed, *candidates[1:]])
+    assert pending == [changed]
+    assert content_hash(changed[2]) != content_hash(corpus_rows[0].chunk_text)

@@ -11,10 +11,13 @@ dependencies = [
     "tenacity>=8.3",
     "numpy>=2.0",
     "pandas>=2.2",
-    "sentence-transformers>=3.0",
+    "sentence-transformers[cross-encoder]>=3.0",
     "psycopg[binary]>=3.2",
     "pgvector>=0.3",
     "langsmith>=0.1.80",
+    "langchain-text-splitters>=0.2",
+    "langchain-core>=0.2",
+    "redis>=5.0",
 ]
 
 [dependency-groups]
@@ -27,10 +30,11 @@ dev = [
     "respx>=0.21",
     "ragas>=0.1.10",
     "great-expectations>=0.18",
-    "testcontainers[postgres]>=4.7",
+    "testcontainers[postgres,redis]>=4.7",
     "pandas-stubs>=2.2",
     "langchain-anthropic>=0.3",
     "anthropic>=0.39",
+    "apache-airflow>=2.9",
 ]
 
 [tool.uv]
@@ -62,6 +66,10 @@ module = [
     "datasets.*",
     "great_expectations",
     "great_expectations.*",
+    "langchain_core.*",
+    "langchain_text_splitters.*",
+    "redis",
+    "redis.*",
 ]
 ignore_missing_imports = true
 
