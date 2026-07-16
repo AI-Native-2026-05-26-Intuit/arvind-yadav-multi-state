@@ -12,7 +12,9 @@ class MultistateAiSettings(BaseSettings):  # type: ignore[explicit-any]  # Pydan
         env_file=".env",
         env_file_encoding="utf-8",
         secrets_dir="/run/secrets",
-        extra="forbid",
+        # ignore: the same .env also holds unprefixed LANGSMITH_* / ANTHROPIC_* for
+        # the LangSmith SDK and RAGAS (W7 D2); those must not hard-fail settings load.
+        extra="ignore",
         frozen=True,
     )
 
@@ -27,3 +29,9 @@ class MultistateAiSettings(BaseSettings):  # type: ignore[explicit-any]  # Pydan
     )
     tenant_id: str = Field(min_length=1)
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARN|ERROR)$")
+
+    # W7 D2 — retrieval / eval credentials (optional locally; CI supplies via secrets.*)
+    langsmith_api_key: SecretStr | None = None
+    langsmith_project: str = Field(default="multistate-ai-dev", min_length=1)
+    pg_dsn: str | None = None
+    anthropic_api_key: SecretStr | None = None

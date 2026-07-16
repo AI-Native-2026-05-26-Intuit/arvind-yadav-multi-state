@@ -23,12 +23,16 @@ permissions:
 
 jobs:
   python-quality-gate:
-    name: uv sync + ruff + mypy + pytest
+    name: uv sync + ruff + mypy + pytest + W7D2 gates
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # W7 D2 adds Testcontainers + optional LLM-backed RAGAS; keep headroom.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: multistate-ai
+    env:
+      # Rancher/local and GHA both prefer Ryuk off for socket-mount quirks.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - name: Check out source
         uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
@@ -54,5 +58,32 @@ jobs:
       - name: mypy --strict
         run: uv run mypy src/ tests/
 
-      - name: pytest with coverage
-        run: uv run pytest -v --cov=src --cov-fail-under=85
+      - name: pytest with coverage (exclude slow LLM gates)
+        run: uv run pytest -v -m 'not slow' --cov=src --cov-fail-under=85
+
+      # ----- New W7 D2 steps -----
+
+      - name: Great Expectations doc_chunks_v1 suite (Testcontainers)
+        run: uv run pytest -v -k 'test_doc_chunks_suite_passes'
+        env:
+          LANGSMITH_API_KEY: ${{ secrets.MULTISTATE_AI_LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: multistate-ai-dev-ci
+          LANGSMITH_TRACING: "true"
+
+      - name: RAGAS golden-set thresholds
+        run: uv run pytest -v -k 'test_ragas_baseline_thresholds' --tb=short
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
+          MULTISTATE_AI_ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
+          # Live Anthropic evaluator (retired 3.5 haiku IDs 404).
+          MULTISTATE_AI_RAGAS_MODEL: claude-haiku-4-5-20251001
+          # RAGAS uses LangChain directly; LangSmith tracing is validated in the next step.
+          LANGSMITH_TRACING: "false"
+          HF_HUB_DISABLE_TELEMETRY: "1"
+
+      - name: Assert LangSmith run uploaded for a sample request
+        run: uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
+        env:
+          LANGSMITH_API_KEY: ${{ secrets.MULTISTATE_AI_LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: multistate-ai-dev-ci
+          LANGSMITH_TRACING: "true"
