@@ -53,7 +53,7 @@ python_version = "3.12"
 disallow_any_explicit = true
 warn_return_any = true
 warn_unused_ignores = true
-exclude = ["build/", "dist/"]
+exclude = ["build/", "dist/", "src/multistate_ai/dags/"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -70,6 +70,10 @@ module = [
     "langchain_text_splitters.*",
     "redis",
     "redis.*",
+    "airflow",
+    "airflow.*",
+    "anthropic",
+    "anthropic.*",
 ]
 ignore_missing_imports = true
 
@@ -98,9 +102,11 @@ markers = [
 source = ["src"]
 omit = [
     "src/multistate_ai/scripts/*",
+    "src/multistate_ai/dags/*",
 ]
 
 [tool.coverage.report]
 omit = [
     "src/multistate_ai/scripts/*",
+    "src/multistate_ai/dags/*",
 ]

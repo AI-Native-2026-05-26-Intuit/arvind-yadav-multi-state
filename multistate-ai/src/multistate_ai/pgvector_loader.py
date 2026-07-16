@@ -101,3 +101,8 @@ def dsn_from_env() -> str:
         return os.environ["MULTISTATE_AI_PG_DSN"]
     except KeyError as exc:
         raise RuntimeError("MULTISTATE_AI_PG_DSN must be set in env") from exc
+
+
+def upsert_pending() -> int:
+    """Upsert embedded chunks awaiting write; DAG-facing stub returns 0."""
+    return 0

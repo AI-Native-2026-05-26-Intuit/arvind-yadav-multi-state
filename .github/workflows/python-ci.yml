@@ -87,3 +87,29 @@ jobs:
           LANGSMITH_API_KEY: ${{ secrets.MULTISTATE_AI_LANGSMITH_API_KEY }}
           LANGSMITH_PROJECT: multistate-ai-dev-ci
           LANGSMITH_TRACING: "true"
+
+      # ----- New W7 D3 steps -----
+
+      - name: Tenant isolation (Testcontainers pgvector)
+        run: uv run pytest -v -k 'test_tenant_isolation'
+        env:
+          LANGSMITH_API_KEY: ${{ secrets.MULTISTATE_AI_LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: multistate-ai-dev-ci
+          LANGSMITH_TRACING: "true"
+
+      - name: RAGAS faithfulness >= 0.85 gate
+        run: uv run pytest -v -k 'test_ragas_faithfulness_gate'
+        env:
+          LANGSMITH_API_KEY: ${{ secrets.MULTISTATE_AI_LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: multistate-ai-dev-ci
+          LANGSMITH_TRACING: "false"
+          ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
+          MULTISTATE_AI_ANTHROPIC_API_KEY: ${{ secrets.MULTISTATE_AI_ANTHROPIC_API_KEY }}
+          MULTISTATE_AI_RAGAS_MODEL: claude-haiku-4-5-20251001
+          HF_HUB_DISABLE_TELEMETRY: "1"
+
+      - name: Semantic cache + tenant-key smoke test
+        run: uv run pytest -v -k 'test_semantic_cache'
+
+      - name: Airflow DAG import check
+        run: uv run python -c "from multistate_ai.dags.rag_svc_ingest import multistate_ai_ingest_dag"

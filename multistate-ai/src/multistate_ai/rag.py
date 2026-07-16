@@ -1,8 +1,8 @@
-"""Retrieval surface for the sidecar; @traceable streams runs to LangSmith.
+"""retrieve_and_generate — the W7D3 entry point — plus W7D2 retrieve_chunks.
 
-The LangSmith client reads LANGSMITH_API_KEY and LANGSMITH_PROJECT
-from env at boot. Never hardcode the key; the production runtime
-supplies it via the same secrets mechanism as the LLM proxy key.
+Five stages plus the semantic-cache check. The same function will be
+published by Thursday's MCP server and called from Friday's LangGraph
+agents. Pinning this signature today keeps both downstream days cheap.
 """
 
 from __future__ import annotations
@@ -13,13 +13,18 @@ from typing import Final
 
 import numpy as np
 import psycopg
+import redis
+from anthropic import Anthropic
 from langsmith import traceable
 from numpy.typing import NDArray
 from pgvector.psycopg import register_vector
 from sentence_transformers import SentenceTransformer
 
+from .cache import cache_lookup, cache_store
 from .corpus import MODEL_NAME
+from .hybrid import dense_topk_filtered, rrf_fuse, sparse_topk_fts
 from .pgvector_loader import dsn_from_env
+from .rerank import bge_rerank, mmr_pick
 
 _RETRIEVER_NAME: Final = "multistate_ai.retrieve_chunks"
 
@@ -47,8 +52,7 @@ def retrieve_chunks(
 ) -> list[dict[str, object]]:
     """Embed the question, run ANN search, return top-k chunks.
 
-    The @traceable decorator captures inputs, outputs, latency, and the
-    span hierarchy in the LangSmith project named by LANGSMITH_PROJECT.
+    Kept from W7 D2 for LangSmith visibility asserts and unit tests.
     """
     if k <= 0:
         raise ValueError("k must be > 0")
@@ -68,7 +72,6 @@ def retrieve_chunks(
     with psycopg.connect(dsn) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            # Cosine operator (<=>) matches the HNSW op-class vector_cosine_ops.
             cur.execute(
                 "SELECT doc_id, chunk_idx, chunk_text, embedding <=> %s AS dist "
                 "FROM doc_chunks "
@@ -100,4 +103,91 @@ def retrieve_chunks_from_env(
         k=k,
         tenant_id=tenant_id,
         model_version=model_version,
+    )
+
+
+@traceable(run_type="chain", name="multistate_ai.retrieve_and_generate")
+def retrieve_and_generate(
+    query_text: str,
+    tenant_id: str,
+    *,
+    anthropic: Anthropic,
+    conn: psycopg.Connection,
+    r: redis.Redis,
+    metadata_filter: dict[str, str] | None = None,
+    model_name: str = "claude-sonnet-4-5",
+    use_hybrid: bool = True,
+    use_mmr: bool = True,
+    use_rerank: bool = True,
+    use_filter: bool = True,
+) -> dict[str, object]:
+    _require_langsmith_api_key()
+    qvec: NDArray[np.float32] = (
+        _embedding_model()
+        .encode(
+            [query_text],
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
+        .astype(np.float32)[0]
+    )
+
+    cached = cache_lookup(r, qvec, tenant_id)
+    if cached:
+        return cached
+
+    register_vector(conn)
+    dense = dense_topk_filtered(
+        conn,
+        qvec,
+        tenant_id,
+        metadata_filter=metadata_filter if use_filter else None,
+        k=50,
+    )
+    sparse = sparse_topk_fts(conn, query_text, tenant_id, k=50) if use_hybrid else []
+    fused = rrf_fuse(dense, sparse, top_k=60) if use_hybrid else dense[:60]
+    diversified = mmr_pick(qvec, fused, _embedding_model(), k=20) if use_mmr else fused[:20]
+    if use_rerank:
+        reranked, timed_out = bge_rerank(query_text, diversified, top_k=6)
+    else:
+        reranked, timed_out = diversified[:6], False
+
+    # Generation pinned to claude-sonnet-4-5 per Topic 12 entry point.
+    msg = anthropic.messages.create(
+        model=model_name,
+        max_tokens=512,
+        messages=[
+            {
+                "role": "user",
+                "content": _build_prompt(query_text, reranked),
+            }
+        ],
+    )
+    text = ""
+    if msg.content:
+        block = msg.content[0]
+        text = getattr(block, "text", "") or ""
+    answer: dict[str, object] = {
+        "text": text,
+        "citations": [
+            {
+                "doc_id": cid,
+                "chunk_text": txt,
+                "score": score,
+                "tenant_id": tenant_id,
+            }
+            for cid, txt, score in reranked
+        ],
+        "rerank_timed_out": timed_out,
+    }
+    cache_store(r, qvec, tenant_id, answer)
+    return answer
+
+
+def _build_prompt(query_text: str, ctx: list[tuple[str, str, float]]) -> str:
+    parts = [f"[{i}] {txt}" for i, (_, txt, _) in enumerate(ctx, 1)]
+    return (
+        "Answer the question using only the numbered context below.\n\n"
+        + "\n\n".join(parts)
+        + f"\n\nQuestion: {query_text}"
     )

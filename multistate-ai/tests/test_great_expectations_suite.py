@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import psycopg
 import pytest
+from ddl_util import apply_sql_file
 from great_expectations.core import ExpectationSuite
 from great_expectations.core.validation_definition import ValidationDefinition
 from great_expectations.expectations.core.expect_column_value_lengths_to_be_between import (
@@ -29,7 +30,8 @@ from multistate_ai.pgvector_loader import load_rows
 
 SUITE_NAME = "doc_chunks_v1"
 _ROOT = Path(__file__).resolve().parents[1]
-_DDL = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V1 = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V2 = _ROOT / "sql" / "V002__rag2_metadata_and_partial_indexes.sql"
 _SEED = Path(__file__).parent / "fixtures" / "corpus_seed.jsonl"
 
 
@@ -57,9 +59,8 @@ def pg_dsn() -> Iterator[str]:
     """Spin Postgres + pgvector, apply DDL, seed >=100 chunks."""
     with PostgresContainer("pgvector/pgvector:pg16") as pg:
         dsn = _to_psycopg_dsn(pg.get_connection_url())
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            cur.execute(_DDL.read_text())
-            conn.commit()
+        apply_sql_file(dsn, _DDL_V1)
+        apply_sql_file(dsn, _DDL_V2)
         df = load_corpus(_SEED)
         rows = embed_dataframe(df, model=_FakeMiniLM())
         n = load_rows(dsn, rows)
