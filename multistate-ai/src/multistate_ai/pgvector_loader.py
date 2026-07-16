@@ -25,6 +25,15 @@ _INSERT_SQL = (
     "    content_hash = EXCLUDED.content_hash"
 )
 
+# V001-only schemas (LangSmith assert / older Testcontainers fixtures).
+_INSERT_SQL_LEGACY = (
+    "INSERT INTO doc_chunks "
+    "(doc_id, chunk_idx, chunk_text, embedding, model_version, tenant_id) "
+    "VALUES (%s, %s, %s, %s, %s, %s) "
+    "ON CONFLICT (doc_id, chunk_idx, model_version) DO UPDATE "
+    "SET chunk_text = EXCLUDED.chunk_text, embedding = EXCLUDED.embedding"
+)
+
 _LOOKUP_SQL = (
     "SELECT doc_id, chunk_idx, content_hash, model_version "
     "FROM doc_chunks "
@@ -90,7 +99,27 @@ def load_rows(dsn: str, rows: Iterable[CorpusRow]) -> int:
     with psycopg.connect(dsn) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            cur.executemany(_INSERT_SQL, payload)
+            # content_hash exists after V002; fall back for V001-only DBs
+            # (e.g. LangSmith assert script that only applies V001).
+            try:
+                cur.executemany(_INSERT_SQL, payload)
+            except psycopg.errors.UndefinedColumn:
+                conn.rollback()
+                register_vector(conn)
+                legacy_payload = [
+                    (doc_id, chunk_idx, chunk_text, emb, model_version, tenant_id)
+                    for (
+                        doc_id,
+                        chunk_idx,
+                        chunk_text,
+                        emb,
+                        model_version,
+                        tenant_id,
+                        _h,
+                    ) in payload
+                ]
+                with conn.cursor() as cur2:
+                    cur2.executemany(_INSERT_SQL_LEGACY, legacy_payload)
         conn.commit()
     return len(payload)
 

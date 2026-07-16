@@ -24,7 +24,8 @@ from multistate_ai.pgvector_loader import load_rows
 from multistate_ai.rag import retrieve_chunks, retrieve_chunks_from_env
 
 _ROOT = Path(__file__).resolve().parents[3]  # multistate-ai/
-_DDL = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V1 = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V2 = _ROOT / "sql" / "V002__rag2_metadata_and_partial_indexes.sql"
 _SEED = _ROOT / "tests" / "fixtures" / "corpus_seed.jsonl"
 _RUN_NAME = "multistate_ai.retrieve_chunks"
 _DEFAULT_PROJECT = "multistate-ai-dev-ci"
@@ -49,11 +50,22 @@ def _to_psycopg_dsn(url: str) -> str:
     )
 
 
+def _apply_sql_file(dsn: str, path: Path) -> None:
+    """Apply migration statements in autocommit (CREATE INDEX CONCURRENTLY)."""
+    cleaned_lines: list[str] = []
+    for line in path.read_text().splitlines():
+        if line.lstrip().startswith("--"):
+            continue
+        cleaned_lines.append(line)
+    statements = [s.strip() for s in "\n".join(cleaned_lines).split(";") if s.strip()]
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        for stmt in statements:
+            conn.execute(stmt)
+
+
 def _seed(dsn: str) -> None:
-    ddl = _DDL.read_text()
-    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-        cur.execute(ddl)
-        conn.commit()
+    _apply_sql_file(dsn, _DDL_V1)
+    _apply_sql_file(dsn, _DDL_V2)
     df = load_corpus(_SEED)
     rows = embed_dataframe(df, model=_FakeMiniLM())
     tenant_a = [r for r in rows if r.tenant_id == "tenant-a"]
