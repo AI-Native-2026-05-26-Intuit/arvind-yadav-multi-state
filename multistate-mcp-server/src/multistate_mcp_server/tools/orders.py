@@ -10,6 +10,8 @@ from langsmith import traceable
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from multistate_mcp_server.app import AppCtx, mcp
+from multistate_mcp_server.auth import resolve_bearer
+from multistate_mcp_server.telemetry import run_logged
 from multistate_mcp_server.tools._errors import _map_http
 
 # ---- Input schemas ---------------------------------------------------------
@@ -88,38 +90,44 @@ _DESC_CREATE_REFUND = (
 @mcp.tool(name="orders.get_order", description=_DESC_GET_ORDER)
 @traceable(name="orders.get_order", project_name="multistate-mcp-server")
 async def orders_get_order(args: GetOrderArgs) -> dict[str, object]:
-    ctx: AppCtx = mcp.get_context().request_context.lifespan_context
-    r = await ctx.http.get(
-        f"/orders/{args.order_id}",
-        headers={
-            "Authorization": f"Bearer {ctx.settings.bearer_jwt}",
-            "X-Tenant": args.tenant_id,
-        },
-    )
-    if r.status_code != 200:
-        raise _map_http(r.status_code, r.text)
-    return OrderView.model_validate(r.json()).model_dump(mode="json")
+    async def _inner() -> dict[str, object]:
+        ctx: AppCtx = mcp.get_context().request_context.lifespan_context
+        r = await ctx.http.get(
+            f"/orders/{args.order_id}",
+            headers={
+                "Authorization": f"Bearer {resolve_bearer(ctx.settings.bearer_jwt)}",
+                "X-Tenant": args.tenant_id,
+            },
+        )
+        if r.status_code != 200:
+            raise _map_http(r.status_code, r.text)
+        return OrderView.model_validate(r.json()).model_dump(mode="json")
+
+    return await run_logged("orders.get_order", args.tenant_id, _inner)
 
 
 @mcp.tool(name="orders.create_refund", description=_DESC_CREATE_REFUND)
 @traceable(name="orders.create_refund", project_name="multistate-mcp-server")
 async def orders_create_refund(args: CreateRefundArgs) -> dict[str, object]:
-    ctx: AppCtx = mcp.get_context().request_context.lifespan_context
-    payload = {
-        "orderId": args.order_id,
-        "amount": str(args.amount),
-        "reason": args.reason,
-        "idempotencyKey": str(args.idempotency_key),
-    }
-    r = await ctx.http.post(
-        f"/orders/{args.order_id}/refunds",
-        json=payload,
-        headers={
-            "Authorization": f"Bearer {ctx.settings.bearer_jwt}",
-            "X-Tenant": args.tenant_id,
-            "Idempotency-Key": str(args.idempotency_key),
-        },
-    )
-    if r.status_code != 200:
-        raise _map_http(r.status_code, r.text)
-    return RefundView.model_validate(r.json()).model_dump(mode="json")
+    async def _inner() -> dict[str, object]:
+        ctx: AppCtx = mcp.get_context().request_context.lifespan_context
+        payload = {
+            "orderId": args.order_id,
+            "amount": str(args.amount),
+            "reason": args.reason,
+            "idempotencyKey": str(args.idempotency_key),
+        }
+        r = await ctx.http.post(
+            f"/orders/{args.order_id}/refunds",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {resolve_bearer(ctx.settings.bearer_jwt)}",
+                "X-Tenant": args.tenant_id,
+                "Idempotency-Key": str(args.idempotency_key),
+            },
+        )
+        if r.status_code != 200:
+            raise _map_http(r.status_code, r.text)
+        return RefundView.model_validate(r.json()).model_dump(mode="json")
+
+    return await run_logged("orders.create_refund", args.tenant_id, _inner)

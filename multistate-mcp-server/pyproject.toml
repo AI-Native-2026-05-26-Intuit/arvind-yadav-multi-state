@@ -16,6 +16,8 @@ dependencies = [
     "langsmith>=0.1.80",
     "structlog>=24.1",                # structured JSON logging on stderr
     "anthropic>=0.39",                # required by multistate_ai.rag at import time
+    "pyjwt[crypto]>=2.8",             # SSE bearer JWT + JWKS validation
+    "uvicorn>=0.30",                  # SSE HTTP transport
     # The W7 D3 sidecar as a path dependency (read-only library reuse):
     "multistate_ai @ {root:uri}/../multistate-ai",
 ]
@@ -68,7 +70,7 @@ select = ["E", "F", "UP", "B", "SIM", "I", "RUF", "T20"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/multistate_mcp_server/transports/*.py" = ["T20"]
-"src/multistate_mcp_server/scripts/*.py" = ["T20"]
+"src/multistate_mcp_server/scripts/*.py" = ["T20", "BLE001"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"

@@ -25,3 +25,11 @@ class Settings(BaseSettings):  # type: ignore[explicit-any]  # Pydantic BaseSett
     bearer_jwt: str = Field(default="")
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8080)
+
+    # W3 D1 IdP (Keycloak-style realm). Audience is the MCP resource server.
+    jwt_issuer: str = Field(default="https://idp.example.internal/realms/uptimecrew")
+    jwt_audience: str = Field(default="multistate-mcp-server")
+    jwks_url: str = Field(default="")
+    jwt_algorithm: str = Field(default="HS256")
+    # Local/dev HS256 secret; leave empty in prod (use RS256 + JWKS).
+    jwt_secret: str = Field(default="dev-only-multistate-mcp-hs256")

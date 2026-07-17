@@ -5,6 +5,8 @@ from langsmith import traceable
 from pydantic import BaseModel, ConfigDict, Field
 
 from multistate_mcp_server.app import AppCtx, mcp
+from multistate_mcp_server.auth import resolve_bearer
+from multistate_mcp_server.telemetry import run_logged
 from multistate_mcp_server.tools._errors import _map_http
 
 
@@ -38,23 +40,26 @@ _DESC_CHAT = (
 @mcp.tool(name="llm.chat", description=_DESC_CHAT)
 @traceable(name="llm.chat", project_name="multistate-mcp-server")
 async def llm_chat(args: ChatArgs) -> dict[str, object]:
-    ctx: AppCtx = mcp.get_context().request_context.lifespan_context
-    url = f"{ctx.settings.llm_proxy_url.rstrip('/')}/v1/chat/completions"
-    r = await ctx.http.post(
-        url,
-        json={
-            "messages": [m.model_dump(mode="json") for m in args.messages],
-            "max_tokens": args.max_tokens,
-        },
-        headers={
-            "Authorization": f"Bearer {ctx.settings.bearer_jwt}",
-            "X-Tenant": args.tenant_id,
-            "Content-Type": "application/json",
-        },
-    )
-    if r.status_code != 200:
-        raise _map_http(r.status_code, r.text)
-    body = r.json()
-    if not isinstance(body, dict):
-        raise _map_http(503, "llm-proxy returned non-object JSON")
-    return body
+    async def _inner() -> dict[str, object]:
+        ctx: AppCtx = mcp.get_context().request_context.lifespan_context
+        url = f"{ctx.settings.llm_proxy_url.rstrip('/')}/v1/chat/completions"
+        r = await ctx.http.post(
+            url,
+            json={
+                "messages": [m.model_dump(mode="json") for m in args.messages],
+                "max_tokens": args.max_tokens,
+            },
+            headers={
+                "Authorization": f"Bearer {resolve_bearer(ctx.settings.bearer_jwt)}",
+                "X-Tenant": args.tenant_id,
+                "Content-Type": "application/json",
+            },
+        )
+        if r.status_code != 200:
+            raise _map_http(r.status_code, r.text)
+        body = r.json()
+        if not isinstance(body, dict):
+            raise _map_http(503, "llm-proxy returned non-object JSON")
+        return body
+
+    return await run_logged("llm.chat", args.tenant_id, _inner)
