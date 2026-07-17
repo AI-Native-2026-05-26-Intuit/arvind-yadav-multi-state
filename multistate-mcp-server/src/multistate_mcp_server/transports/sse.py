@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 
 from multistate_mcp_server.app import mcp
-from multistate_mcp_server.tools import _resources, orders  # noqa: F401
+from multistate_mcp_server.tools import _resources, llm, orders, rag  # noqa: F401
 
 
 def main() -> None:

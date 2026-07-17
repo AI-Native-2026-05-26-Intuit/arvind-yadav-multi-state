@@ -5,7 +5,7 @@ in app.py; stdout carries JSON-RPC frames only.
 from __future__ import annotations
 
 from multistate_mcp_server.app import mcp
-from multistate_mcp_server.tools import _resources, orders  # noqa: F401
+from multistate_mcp_server.tools import _resources, llm, orders, rag  # noqa: F401
 
 
 def main() -> None:
