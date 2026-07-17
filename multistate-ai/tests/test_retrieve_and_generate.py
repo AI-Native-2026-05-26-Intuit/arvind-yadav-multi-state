@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 
 from multistate_ai import rag as rag_mod
 from multistate_ai.corpus import EMBEDDING_DIM
+from multistate_ai.hybrid import RetrievedChunk
 from multistate_ai.rag import retrieve_and_generate
 
 
@@ -40,6 +41,28 @@ def _stub_embed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
 
 
+def test_retrieve_and_generate_rejects_blank_query() -> None:
+    with pytest.raises(ValueError, match="query_text"):
+        retrieve_and_generate(
+            "   ",
+            "tenant-a",
+            anthropic=MagicMock(spec=Anthropic),
+            conn=MagicMock(),
+            r=MagicMock(),
+        )
+
+
+def test_retrieve_and_generate_rejects_blank_tenant() -> None:
+    with pytest.raises(ValueError, match="tenant_id"):
+        retrieve_and_generate(
+            "nexus?",
+            "",
+            anthropic=MagicMock(spec=Anthropic),
+            conn=MagicMock(),
+            r=MagicMock(),
+        )
+
+
 def test_retrieve_and_generate_cache_hit_short_circuits(monkeypatch: pytest.MonkeyPatch) -> None:
     cached = {"text": "from-cache", "citations": [], "rerank_timed_out": False}
     monkeypatch.setattr(rag_mod, "cache_lookup", lambda *_a, **_k: cached)
@@ -63,11 +86,13 @@ def test_retrieve_and_generate_flags_skip_hybrid_mmr_rerank(
     monkeypatch.setattr(
         rag_mod,
         "dense_topk_filtered",
-        lambda *_a, **_k: [("d1", "California nexus threshold text.", 0.1)],
+        lambda *_a, **_k: [
+            RetrievedChunk("42", "d1", "California nexus threshold text.", 0.1)
+        ],
     )
     sparse_calls: list[int] = []
 
-    def _sparse(*_a: object, **_k: object) -> list[tuple[str, str, float]]:
+    def _sparse(*_a: object, **_k: object) -> list[RetrievedChunk]:
         sparse_calls.append(1)
         return []
 
@@ -96,4 +121,6 @@ def test_retrieve_and_generate_flags_skip_hybrid_mmr_rerank(
     cites = out["citations"]
     assert isinstance(cites, list) and cites
     assert isinstance(cites[0], dict)
+    assert cites[0]["chunk_id"] == "42"
+    assert cites[0]["doc_id"] == "d1"
     assert cites[0]["tenant_id"] == "tenant-a"

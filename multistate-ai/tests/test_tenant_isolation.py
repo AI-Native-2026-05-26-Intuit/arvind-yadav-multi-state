@@ -80,11 +80,11 @@ def test_tenant_a_query_returns_no_tenant_b_chunks(pg_dsn: str) -> None:
         register_vector(conn)
         results = dense_topk_filtered(conn, qvec, "tenant-a", k=20, model_version=MODEL_NAME)
     assert results, "expected at least one tenant-a hit"
-    doc_ids = [r[0] for r in results]
+    chunk_ids = [h.chunk_id for h in results]
     with psycopg.connect(pg_dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT DISTINCT tenant_id FROM doc_chunks WHERE doc_id = ANY(%s)",
-            (doc_ids,),
+            "SELECT DISTINCT tenant_id FROM doc_chunks WHERE chunk_id::text = ANY(%s)",
+            (chunk_ids,),
         )
         tenants = {row[0] for row in cur.fetchall()}
     assert tenants == {"tenant-a"}, f"tenant leak detected: {tenants}"

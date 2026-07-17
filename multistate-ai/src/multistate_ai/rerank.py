@@ -11,6 +11,8 @@ from langsmith.run_helpers import get_current_run_tree
 from numpy.typing import NDArray
 from sentence_transformers import CrossEncoder
 
+from .hybrid import RetrievedChunk
+
 RERANKER_MODEL: Final = "BAAI/bge-reranker-base"
 RERANK_TIMEOUT_MS: Final = 300
 MMR_LAMBDA: Final = 0.7
@@ -53,15 +55,15 @@ def _attach_rerank_timeout_span(timed_out: bool) -> None:
 @traceable(run_type="chain", name="multistate_ai.mmr_pick")
 def mmr_pick(
     query_vec: NDArray[np.float32],
-    candidates: list[tuple[str, str, float]],
+    candidates: list[RetrievedChunk],
     embedder: EmbeddingEncoder,
     k: int = 20,
     lambda_param: float = MMR_LAMBDA,
-) -> list[tuple[str, str, float]]:
+) -> list[RetrievedChunk]:
     # Greedy MMR: lambda * sim(q, c) - (1 - lambda) * max sim(c, picked).
     if not candidates:
         return []
-    texts = [t for _, t, _ in candidates]
+    texts = [c.chunk_text for c in candidates]
     cand_vecs = embedder.encode(
         texts,
         normalize_embeddings=True,
@@ -91,10 +93,10 @@ def mmr_pick(
 @traceable(run_type="chain", name="multistate_ai.bge_rerank")
 def bge_rerank(
     query_text: str,
-    candidates: list[tuple[str, str, float]],
+    candidates: list[RetrievedChunk],
     top_k: int = 6,
     timeout_ms: int = RERANK_TIMEOUT_MS,
-) -> tuple[list[tuple[str, str, float]], bool]:
+) -> tuple[list[RetrievedChunk], bool]:
     # Returns (results, rerank_timed_out). On timeout we fall back to the
     # input order to preserve retrieval-only behaviour; the boolean is
     # logged to LangSmith via a rerank_timeout metric.
@@ -106,7 +108,7 @@ def bge_rerank(
     reranker = _get_reranker()
     # Token-cap each passage. CrossEncoder stubs type predict() too narrowly
     # for the documented list-of-pairs API — keep a precise ignore.
-    pairs = [[query_text, t[:1024]] for _, t, _ in candidates]
+    pairs = [[query_text, c.chunk_text[:1024]] for c in candidates]
     scores = reranker.predict(pairs)  # type: ignore[arg-type]
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     if elapsed_ms > timeout_ms:
@@ -120,4 +122,7 @@ def bge_rerank(
         reverse=True,
     )
     _attach_rerank_timeout_span(False)
-    return [(cid, txt, float(s)) for (cid, txt, _), s in ranked[:top_k]], False
+    return [
+        RetrievedChunk(hit.chunk_id, hit.doc_id, hit.chunk_text, float(s))
+        for hit, s in ranked[:top_k]
+    ], False

@@ -138,9 +138,11 @@ This sidecar gained the RAG 2.0 production retrieval stack today:
 * ``src/multistate_ai/chunker.py`` —
   ``RecursiveCharacterTextSplitter`` at ``chunk_size=900`` /
   ``overlap=150``; synthetic ``chunk_id`` discipline.
-* ``src/multistate_ai/hybrid.py`` — ``dense_topk_filtered``,
-  ``sparse_topk_fts``, ``rrf_fuse`` (k=60), ``coverage``
-  diagnostic. Every retriever decorated with ``@traceable``.
+* ``src/multistate_ai/hybrid.py`` — ``RetrievedChunk`` keyed by
+  ``chunk_id`` (parent ``doc_id`` kept for citations),
+  ``dense_topk_filtered``, ``sparse_topk_fts``, ``rrf_fuse``
+  (k=60), ``coverage`` diagnostic. Every retriever decorated
+  with ``@traceable``.
 * ``src/multistate_ai/rerank.py`` — ``mmr_pick``
   (lambda=0.7) and ``bge_rerank`` against
   ``BAAI/bge-reranker-base`` with a strict 300 ms

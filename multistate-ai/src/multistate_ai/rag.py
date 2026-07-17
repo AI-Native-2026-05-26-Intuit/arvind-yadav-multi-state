@@ -22,7 +22,7 @@ from sentence_transformers import SentenceTransformer
 
 from .cache import cache_lookup, cache_store
 from .corpus import MODEL_NAME
-from .hybrid import dense_topk_filtered, rrf_fuse, sparse_topk_fts
+from .hybrid import RetrievedChunk, dense_topk_filtered, rrf_fuse, sparse_topk_fts
 from .pgvector_loader import dsn_from_env
 from .rerank import bge_rerank, mmr_pick
 
@@ -40,6 +40,13 @@ def _require_langsmith_api_key() -> None:
     """Fail at boot (first call), not deep inside the ANN path — cheaper signal."""
     if "LANGSMITH_API_KEY" not in os.environ or not os.environ["LANGSMITH_API_KEY"]:
         raise RuntimeError("LANGSMITH_API_KEY must be set in env")
+
+
+def _validate_query_and_tenant(query_text: str, tenant_id: str) -> None:
+    if not query_text.strip():
+        raise ValueError("query_text must be non-empty")
+    if not tenant_id.strip():
+        raise ValueError("tenant_id must be non-empty")
 
 
 @traceable(run_type="retriever", name=_RETRIEVER_NAME)
@@ -121,6 +128,7 @@ def retrieve_and_generate(
     use_rerank: bool = True,
     use_filter: bool = True,
 ) -> dict[str, object]:
+    _validate_query_and_tenant(query_text, tenant_id)
     _require_langsmith_api_key()
     qvec: NDArray[np.float32] = (
         _embedding_model()
@@ -171,12 +179,13 @@ def retrieve_and_generate(
         "text": text,
         "citations": [
             {
-                "doc_id": cid,
-                "chunk_text": txt,
-                "score": score,
+                "chunk_id": hit.chunk_id,
+                "doc_id": hit.doc_id,
+                "chunk_text": hit.chunk_text,
+                "score": hit.score,
                 "tenant_id": tenant_id,
             }
-            for cid, txt, score in reranked
+            for hit in reranked
         ],
         "rerank_timed_out": timed_out,
     }
@@ -184,8 +193,8 @@ def retrieve_and_generate(
     return answer
 
 
-def _build_prompt(query_text: str, ctx: list[tuple[str, str, float]]) -> str:
-    parts = [f"[{i}] {txt}" for i, (_, txt, _) in enumerate(ctx, 1)]
+def _build_prompt(query_text: str, ctx: list[RetrievedChunk]) -> str:
+    parts = [f"[{i}] {hit.chunk_text}" for i, hit in enumerate(ctx, 1)]
     return (
         "Answer the question using only the numbered context below.\n\n"
         + "\n\n".join(parts)
