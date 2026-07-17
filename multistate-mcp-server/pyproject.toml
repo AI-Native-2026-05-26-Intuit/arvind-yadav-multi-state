@@ -18,9 +18,12 @@ dependencies = [
     "anthropic>=0.39",                # required by multistate_ai.rag at import time
     "pyjwt[crypto]>=2.8",             # SSE bearer JWT + JWKS validation
     "uvicorn>=0.30",                  # SSE HTTP transport
-    # The W7 D3 sidecar as a path dependency (read-only library reuse):
-    "multistate_ai @ {root:uri}/../multistate-ai",
+    # W7 D3 sidecar — path resolved via [tool.uv.sources] (relative, CI-safe)
+    "multistate-ai",
 ]
+
+[tool.uv.sources]
+multistate-ai = { path = "../multistate-ai" }
 
 [project.scripts]
 multistate-mcp-server = "multistate_mcp_server.transports.stdio:main"
