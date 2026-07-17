@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "multistate-mcp-server": {
+      "command": "uvx",
+      "args": ["multistate-mcp-server"],
+      "env": {
+        "MULTISTATE_MCP_BEARER_JWT": "REPLACE_WITH_BEARER_FROM_KEYCHAIN",
+        "MULTISTATE_MCP_ORDERS_SVC_URL": "https://multistate-orders.internal",
+        "LANGSMITH_API_KEY": "REPLACE_WITH_LANGSMITH_API_KEY_FROM_KEYCHAIN"
+      }
+    }
+  }
+}

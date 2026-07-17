@@ -71,6 +71,8 @@ select = ["E", "F", "UP", "B", "SIM", "I", "RUF", "T20"]
 [tool.ruff.lint.per-file-ignores]
 "src/multistate_mcp_server/transports/*.py" = ["T20"]
 "src/multistate_mcp_server/scripts/*.py" = ["T20", "BLE001"]
+"tests/test_e2e_mcp_to_spring.py" = ["BLE001"]
+"tests/test_smoke_stdio.py" = ["N802"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"

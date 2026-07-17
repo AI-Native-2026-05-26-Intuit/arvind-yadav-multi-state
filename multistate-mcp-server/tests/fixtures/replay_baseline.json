@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "llm.chat": {
+      "n": 8,
+      "p50_ms": 0.313,
+      "p95_ms": 50.0,
+      "p99_ms": 0.386,
+      "mean_ms": 0.32
+    },
+    "orders.create_refund": {
+      "n": 8,
+      "p50_ms": 0.347,
+      "p95_ms": 50.0,
+      "p99_ms": 0.412,
+      "mean_ms": 0.348
+    },
+    "orders.get_order": {
+      "n": 8,
+      "p50_ms": 0.383,
+      "p95_ms": 103.044,
+      "p99_ms": 48.953,
+      "mean_ms": 6.9
+    },
+    "rag.retrieve_and_generate": {
+      "n": 8,
+      "p50_ms": 0.201,
+      "p95_ms": 50.0,
+      "p99_ms": 0.284,
+      "mean_ms": 0.209
+    }
+  },
+  "errors": []
+}

@@ -1,0 +1,28 @@
+{
+  "name": "multistate-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP surface for multistate-orders, llm-proxy, and the W7 D3 RAG pipeline.",
+  "transports": {
+    "stdio": {
+      "command": "uvx",
+      "args": ["multistate-mcp-server"]
+    },
+    "sse": {
+      "url": "https://mcp.multistate.internal/sse",
+      "auth": "bearer"
+    }
+  },
+  "tools": [
+    "orders.get_order",
+    "orders.create_refund",
+    "llm.chat",
+    "rag.retrieve_and_generate"
+  ],
+  "resources": [
+    "multistate://catalogue"
+  ],
+  "observability": {
+    "langsmith_project": "multistate-mcp-server"
+  },
+  "forward_hook": "week07_day5_multi_agent_capstone"
+}
