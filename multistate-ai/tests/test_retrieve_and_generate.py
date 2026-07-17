@@ -86,9 +86,7 @@ def test_retrieve_and_generate_flags_skip_hybrid_mmr_rerank(
     monkeypatch.setattr(
         rag_mod,
         "dense_topk_filtered",
-        lambda *_a, **_k: [
-            RetrievedChunk("42", "d1", "California nexus threshold text.", 0.1)
-        ],
+        lambda *_a, **_k: [RetrievedChunk("42", "d1", "California nexus threshold text.", 0.1)],
     )
     sparse_calls: list[int] = []
 

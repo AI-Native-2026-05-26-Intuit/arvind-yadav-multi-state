@@ -200,9 +200,7 @@ def test_rrf_fuse_keeps_distinct_chunks_from_same_doc() -> None:
 
 
 def test_rrf_fuse_union_of_disjoint_top50() -> None:
-    dense = [
-        RetrievedChunk(f"d-{i}", f"doc-d-{i}", f"dense text {i}", float(i)) for i in range(50)
-    ]
+    dense = [RetrievedChunk(f"d-{i}", f"doc-d-{i}", f"dense text {i}", float(i)) for i in range(50)]
     sparse = [
         RetrievedChunk(f"s-{i}", f"doc-s-{i}", f"sparse text {i}", float(i)) for i in range(50)
     ]
