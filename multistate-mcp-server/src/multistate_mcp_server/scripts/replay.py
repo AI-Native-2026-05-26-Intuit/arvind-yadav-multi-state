@@ -40,13 +40,23 @@ def _load_fixtures(fixtures_dir: Path) -> list[dict[str, object]]:
         raise SystemExit(f"no fixture JSON files in {fixtures_dir}")
     out: list[dict[str, object]] = []
     for path in files:
+        # Skip latency baselines / reports committed beside fixtures.
+        if path.name.endswith("_baseline.json") or path.name == "replay_baseline.json":
+            continue
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload, list):
-            out.extend(cast(list[dict[str, object]], payload))
-        elif isinstance(payload, dict):
+            for item in payload:
+                if isinstance(item, dict) and "tool" in item:
+                    out.append(cast(dict[str, object], item))
+        elif isinstance(payload, dict) and "tool" in payload:
             out.append(payload)
+        elif isinstance(payload, dict):
+            # Not a fixture (e.g. leftover report shape) — ignore.
+            continue
         else:
             raise SystemExit(f"fixture {path} must be object or array")
+    if not out:
+        raise SystemExit(f"no tool fixtures found under {fixtures_dir}")
     return out
 
 

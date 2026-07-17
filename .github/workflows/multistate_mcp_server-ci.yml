@@ -62,5 +62,5 @@ jobs:
           uv run python -m multistate_mcp_server.scripts.replay
           --fixtures tests/fixtures/
           --report .replay/latest.json
-          --baseline tests/fixtures/replay_baseline.json
+          --baseline tests/replay_baseline.json
           --max-regression 0.15
