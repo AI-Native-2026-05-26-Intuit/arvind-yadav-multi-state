@@ -126,3 +126,69 @@ the GX suite. Concrete deviations from Claude's output that we corrected:
 
 - MCP server publishing — W7 D4.
 - LangGraph orchestration — W7 D5.
+
+## What W7 D3 adds
+
+This sidecar gained the RAG 2.0 production retrieval stack today:
+
+* ``sql/V002__rag2_metadata_and_partial_indexes.sql`` — JSONB
+  metadata column, GIN ``jsonb_path_ops`` index, per-tenant partial
+  HNSW indexes for ``tenant-a``/``tenant-b``/``tenant-c``, FTS
+  ``tsvector`` column, FTS GIN index.
+* ``src/multistate_ai/chunker.py`` —
+  ``RecursiveCharacterTextSplitter`` at ``chunk_size=900`` /
+  ``overlap=150``; synthetic ``chunk_id`` discipline.
+* ``src/multistate_ai/hybrid.py`` — ``RetrievedChunk`` keyed by
+  ``chunk_id`` (parent ``doc_id`` kept for citations),
+  ``dense_topk_filtered``, ``sparse_topk_fts``, ``rrf_fuse``
+  (k=60), ``coverage`` diagnostic. Every retriever decorated
+  with ``@traceable``.
+* ``src/multistate_ai/rerank.py`` — ``mmr_pick``
+  (lambda=0.7) and ``bge_rerank`` against
+  ``BAAI/bge-reranker-base`` with a strict 300 ms
+  timeout-and-fallback.
+* ``src/multistate_ai/cache.py`` — Redis semantic cache keyed
+  by (tenant_id, epoch, quantised-embedding); ``bump_epoch`` per
+  tenant on Airflow ingest completion.
+* ``src/multistate_ai/dags/rag_svc_ingest.py`` — TaskFlow API
+  DAG (``load_docs -> chunk_docs -> embed_chunks -> upsert_chunks ->
+  bump_cache_epochs``).
+* ``src/multistate_ai/rag.py`` — the ``retrieve_and_generate``
+  entry point Thursday's MCP server will publish (W7 D2
+  ``retrieve_chunks`` retained for LangSmith asserts).
+* ``tests/test_tenant_isolation.py`` — Testcontainers proof
+  that ``tenant-a`` queries never return ``tenant-b`` chunks.
+* ``tests/test_ragas_gate.py`` — faithfulness >=
+  0.85 CI gate.
+* ``docs/ragas/w7d3.md`` — before-vs-after RAGAS report.
+
+## How to run today's additions
+
+```bash
+uv sync                                # picks up the new deps
+uv run pytest -v tests/test_tenant_isolation.py
+uv run pytest -v tests/test_semantic_cache.py
+uv run pytest -v tests/test_ragas_gate.py
+uv run python -c "from multistate_ai.dags.rag_svc_ingest import multistate_ai_ingest_dag"
+```
+
+## AI authoring discipline (W7 D3 additions)
+
+Claude scaffolded the first cut of ``hybrid.py``, ``rerank.py``, and
+the before-vs-after report. Two deviations from Claude's output we corrected:
+
+1. **Rejected: ``0.5 * cosine + 0.5 * bm25`` score fusion.** Claude's
+   hybrid scaffold averaged dense cosine and sparse ``ts_rank_cd`` after
+   min-max normalisation. Those scales are incomparable; we use Reciprocal
+   Rank Fusion (``k_const=60``) on ranks only — see Topic 7 watch-out.
+
+2. **Rejected: rerank without a hard timeout-and-fallback.** Claude's
+   ``bge_rerank`` called ``CrossEncoder.predict`` with no latency cap. We
+   keep a soft 300 ms budget, fall back to retrieval order on overrun, set
+   ``rerank_timed_out`` on the LangSmith span, and export
+   ``rerank_timeout_count`` for SRE alerts so the p99 tail cannot blow the SLO.
+
+3. **Rejected: cache key without ``tenant_id`` / citation defence.** Claude
+   keyed Redis on the quantised embedding alone. We include
+   ``tenant_id`` + per-tenant epoch in the key and treat any citation whose
+   ``tenant_id`` mismatches the requester as a cache miss.

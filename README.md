@@ -183,6 +183,8 @@ aws ecr describe-images \
 
 **Week 7 Day 2:** extended the sidecar with Pandas + MiniLM embeddings (`corpus.py`), idempotent pgvector loading + HNSW (`sql/V001__doc_chunks.sql`, `pgvector_loader.py`), `@traceable` ANN retrieval (`rag.py`), a 50-row RAGAS golden set, a Great Expectations `doc_chunks_v1` suite via Testcontainers, and three new `python-ci` steps (GX / RAGAS / LangSmith run visibility) that read `secrets.MULTISTATE_AI_*` into project `multistate-ai-dev-ci`. Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md). New scaffold transcripts: [multistate-ai/PROMPT_JOURNAL.md](multistate-ai/PROMPT_JOURNAL.md).
 
+**Week 7 Day 3:** RAG 2.0 production retrieval — V002 JSONB metadata + per-tenant partial HNSW + FTS (`sql/V002__rag2_metadata_and_partial_indexes.sql`), RecursiveCharacterTextSplitter chunker, hybrid dense+FTS fused via RRF keyed on `chunk_id`, MMR diversification + `BAAI/bge-reranker-base` with a 300 ms timeout-and-fallback, Redis semantic cache (tenant + epoch + citation defence), `retrieve_and_generate` entry point, Airflow TaskFlow ingest DAG, tenant-isolation proof, and a faithfulness ≥ 0.85 RAGAS CI gate. Before-vs-after report: [multistate-ai/docs/ragas/w7d3.md](multistate-ai/docs/ragas/w7d3.md). Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) § "What W7 D3 adds". Prompt journal: [multistate-ai/PROMPT_JOURNAL.md](multistate-ai/PROMPT_JOURNAL.md).
+
 ## Build & test
 
 ```bash
@@ -204,7 +206,7 @@ sam local invoke TenantLookupFunction --event events/get-tenant.json --env-vars 
 ./scripts/sam-smoke.sh      # post-deploy curl + CloudWatch REPORT check
 ```
 
-**Python sidecar (W7 D1 + D2):**
+**Python sidecar (W7 D1–D3):**
 
 ```bash
 cd multistate-ai

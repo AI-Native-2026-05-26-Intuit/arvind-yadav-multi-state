@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import psycopg
 import pytest
+from ddl_util import apply_sql_file
 from numpy.typing import NDArray
 from testcontainers.postgres import PostgresContainer
 
@@ -17,7 +17,8 @@ from multistate_ai.pgvector_loader import load_rows
 from multistate_ai.rag import retrieve_chunks, retrieve_chunks_from_env
 
 _ROOT = Path(__file__).resolve().parents[1]
-_DDL = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V1 = _ROOT / "sql" / "V001__doc_chunks.sql"
+_DDL_V2 = _ROOT / "sql" / "V002__rag2_metadata_and_partial_indexes.sql"
 _SEED = Path(__file__).parent / "fixtures" / "corpus_seed.jsonl"
 
 
@@ -44,9 +45,8 @@ def _to_psycopg_dsn(url: str) -> str:
 def pg_dsn() -> Iterator[str]:
     with PostgresContainer("pgvector/pgvector:pg16") as pg:
         dsn = _to_psycopg_dsn(pg.get_connection_url())
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            cur.execute(_DDL.read_text())
-            conn.commit()
+        apply_sql_file(dsn, _DDL_V1)
+        apply_sql_file(dsn, _DDL_V2)
         df = load_corpus(_SEED)
         rows = [r for r in embed_dataframe(df, model=_FakeMiniLM()) if r.tenant_id == "tenant-a"]
         load_rows(dsn, rows)

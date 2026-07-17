@@ -288,3 +288,102 @@ Testcontainers seed via `load_corpus` / `embed_dataframe` / `load_rows`.
 
 See [PYTHON.md](PYTHON.md) § "AI authoring discipline (W7 D2 additions)" for
 the float32 / register_vector / env-only LangSmith deltas.
+
+---
+
+# W7 D3 — Prompt Journal (2026-07-16)
+
+## Transcript 1 — hybrid.py scaffolding
+
+### Prompt
+
+```
+Scaffold multistate-ai/src/multistate_ai/hybrid.py for W7 D3 hybrid retrieval.
+
+Expose dense_topk_filtered (pgvector cosine + tenant + model_version + optional
+chunk_metadata @> filter), sparse_topk_fts (websearch_to_tsquery + ts_rank_cd),
+rrf_fuse, and coverage Jaccard diagnostic.
+
+Fuse dense and sparse by averaging normalised scores: 0.5 * cosine + 0.5 * bm25
+after min-max normalisation so the scales line up. Decorate retrievers with
+@traceable. Prefer OpenSearch BM25 if available else Postgres FTS.
+```
+
+### Claude first-cut output (unedited)
+
+```python
+def fuse(dense, sparse):
+    # Normalise both score lists to [0, 1] then average.
+    def minmax(xs):
+        lo, hi = min(xs), max(xs)
+        return [(x - lo) / (hi - lo + 1e-9) for x in xs]
+    d_ids, d_txt, d_s = zip(*dense)
+    s_ids, s_txt, s_s = zip(*sparse)
+    d_n, s_n = minmax(d_s), minmax(s_s)
+    # 0.5 * cosine + 0.5 * bm25 ...
+```
+
+### Disposition
+
+**Rejected** — replaced score fusion with Reciprocal Rank Fusion (`k_const=60`);
+no score normalisation helper remains in `hybrid.py`.
+
+---
+
+## Transcript 2 — rerank.py scaffolding
+
+### Prompt
+
+```
+Scaffold multistate-ai/src/multistate_ai/rerank.py with mmr_pick (lambda=0.7)
+and bge_rerank wrapping BAAI/bge-reranker-base (max_length=256). Return the
+top-6 scored passages. Keep the implementation simple — no need for a
+timeout; the model is fast enough on CPU for our top-20 candidate set.
+Also add query rewriting / HyDE as an optional upgrade path.
+```
+
+### Claude first-cut output (unedited)
+
+```python
+def bge_rerank(query_text, candidates, top_k=6):
+    reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=256)
+    scores = reranker.predict([(query_text, t) for _, t, _ in candidates])
+    ranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
+    return [c for c, _ in ranked[:top_k]]  # no timeout, no fallback flag
+
+def maybe_hyde(query):
+    # optional query rewriting upgrade — expand with hypothetical answer
+    ...
+```
+
+### Disposition
+
+**Modified** — added soft 300 ms timeout-and-fallback, `rerank_timed_out`
+span attribute, module-level cached CrossEncoder, and `rerank_timeout_count`.
+Rejected HyDE / query-rewriting upgrades (explicitly out of scope for today).
+
+---
+
+## Transcript 3 — before-vs-after RAGAS report
+
+### Prompt
+
+```
+Draft docs/ragas/w7d3.md: a before-vs-after RAGAS table for W7 D2 baseline
+plus hybrid / rerank / mmr / filter / all-on columns. Attribute which upgrade
+drove which metric delta. Flag cells below faithfulness 0.85.
+```
+
+### Claude first-cut output (unedited)
+
+```markdown
+| Metric | baseline | all-on |
+| faithfulness | 0.82 | 0.89 |
+Everything improved roughly equally; hybrid was the main driver across the board.
+```
+
+### Disposition
+
+**Modified** — expanded to the full per-upgrade matrix from the assignment
+template; attributed context_precision/faithfulness lift to rerank,
+context_recall to hybrid, answer_relevancy to MMR; flagged sub-0.85 cells.
