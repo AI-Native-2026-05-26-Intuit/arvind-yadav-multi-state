@@ -1,0 +1,99 @@
+# multistate-agent-svc/cfn/agent-svc-budget.yaml
+# CloudFormation: monthly Anthropic budget + BudgetAction hard cap.
+# A 100 % breach attaches a DENY policy to multistate-agent-svc-role blocking
+# llm-proxy invoke until the on-call manually detaches it.
+AWSTemplateFormatVersion: '2010-09-09'
+Description: W7 D5 agent-svc monthly Anthropic budget + BudgetsAction hard stop
+
+Parameters:
+  NotificationEmail:
+    Type: String
+    Default: arvind_yadav1@intuit.com
+  MonthlyLimitUsd:
+    Type: Number
+    Default: 4000
+
+Resources:
+  AgentSvcRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: multistate-agent-svc-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - budgets.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BudgetsActionAttachDeny
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/multistate-agent-svc-role
+              - Effect: Allow
+                Action:
+                  - iam:GetPolicy
+                  - iam:GetPolicyVersion
+                Resource: '*'
+
+  DenyLlmProxyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: DenyLlmProxyInvoke-agent-svc
+      Description: Hard-stop policy attached by BudgetsAction at 100% of monthly cap
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyLlmProxyInvoke
+            Effect: Deny
+            Action:
+              - execute-api:Invoke
+            Resource: '*'
+
+  AgentSvcMonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: multistate-agent-anthropic-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyLimitUsd
+          Unit: USD
+
+  BudgetHardStop:
+    Type: AWS::Budgets::BudgetsAction
+    DependsOn:
+      - AgentSvcMonthlyBudget
+      - DenyLlmProxyPolicy
+      - AgentSvcRole
+    Properties:
+      BudgetName: multistate-agent-anthropic-monthly
+      ActionType: APPLY_IAM_POLICY
+      ActionThreshold:
+        ActionThresholdValue: 100
+        ActionThresholdType: PERCENTAGE
+      ApprovalModel: AUTOMATIC
+      ExecutionRoleArn: !GetAtt AgentSvcRole.Arn
+      Definition:
+        IamActionDefinition:
+          PolicyArn: !Ref DenyLlmProxyPolicy
+          Roles:
+            - multistate-agent-svc-role
+      Subscribers:
+        - Address: !Ref NotificationEmail
+          Type: EMAIL
+
+Outputs:
+  BudgetName:
+    Value: multistate-agent-anthropic-monthly
+  RoleArn:
+    Value: !GetAtt AgentSvcRole.Arn
+  DenyPolicyArn:
+    Value: !Ref DenyLlmProxyPolicy

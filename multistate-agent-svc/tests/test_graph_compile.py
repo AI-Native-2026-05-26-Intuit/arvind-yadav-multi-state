@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import operator
 import os
+from collections.abc import AsyncIterator
 from typing import Annotated, get_args, get_origin, get_type_hints
 
 import pytest
@@ -22,7 +23,7 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 
 @pytest.fixture()
-async def postgres_url() -> str:
+async def postgres_url() -> AsyncIterator[str]:
     with PostgresContainer("postgres:16-alpine") as pg:
         # psycopg3 wants postgresql:// ; testcontainers may emit postgres://
         url = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")

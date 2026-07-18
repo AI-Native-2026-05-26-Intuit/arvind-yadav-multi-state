@@ -1,0 +1,79 @@
+# .github/workflows/multistate_agent_svc-ci.yml
+name: multistate-agent-svc-ci
+
+on:
+  pull_request:
+    paths: ["multistate-agent-svc/**", ".github/workflows/multistate_agent_svc-ci.yml"]
+  push:
+    branches: ["main"]
+    paths: ["multistate-agent-svc/**", ".github/workflows/multistate_agent_svc-ci.yml"]
+
+jobs:
+  per-pr:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: multistate-agent-svc
+    steps:
+      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
+      - uses: astral-sh/setup-uv@a7e15805d229f8677c5ddf08590a8cb972658599  # v3.2.1
+        with:
+          enable-cache: true
+      - name: sync
+        run: uv sync --frozen
+      - name: ruff
+        run: uv run ruff check
+      - name: mypy strict
+        run: uv run mypy --strict src/ tests/ evals/
+      - name: unit + graph compile + budgets
+        env:
+          MULTISTATE_AGENT_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          LANGSMITH_TRACING: "false"
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: >
+          uv run pytest -v
+          tests/test_graph_compile.py
+          tests/test_supervisor.py
+          tests/test_budget_guard.py
+          tests/test_deadline.py
+          tests/test_recursion_limit.py
+      - name: trajectory eval (CI gate)
+        run: uv run python -m multistate_agent_svc.scripts.eval --gate
+
+  merge-to-main:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: multistate-agent-svc
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+        with:
+          role-to-assume: arn:aws:iam::279566174801:role/multistate-agent-svc-deploy
+          aws-region: us-east-1
+      - uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
+      - name: Build image (repo-root context)
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker build -f multistate-agent-svc/Dockerfile \
+            -t multistate-agent-svc:${{ github.sha }} .
+      - name: Tag + push ECR
+        run: |
+          IMG=279566174801.dkr.ecr.us-east-1.amazonaws.com/multistate-agent-svc:${{ github.sha }}
+          docker tag multistate-agent-svc:${{ github.sha }} "$IMG"
+          docker push "$IMG"
+      - name: Bump config repo image tag
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_REPO_TOKEN }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ -x ./scripts/bump_image.sh ]; then
+            ./scripts/bump_image.sh multistate-agent-svc ${{ github.sha }}
+          else
+            echo "bump_image.sh not present; skip config bump"
+          fi
