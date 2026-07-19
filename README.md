@@ -185,6 +185,8 @@ aws ecr describe-images \
 
 **Week 7 Day 3:** RAG 2.0 production retrieval — V002 JSONB metadata + per-tenant partial HNSW + FTS (`sql/V002__rag2_metadata_and_partial_indexes.sql`), RecursiveCharacterTextSplitter chunker, hybrid dense+FTS fused via RRF keyed on `chunk_id`, MMR diversification + `BAAI/bge-reranker-base` with a 300 ms timeout-and-fallback, Redis semantic cache (tenant + epoch + citation defence), `retrieve_and_generate` entry point, Airflow TaskFlow ingest DAG, tenant-isolation proof, and a faithfulness ≥ 0.85 RAGAS CI gate. Before-vs-after report: [multistate-ai/docs/ragas/w7d3.md](multistate-ai/docs/ragas/w7d3.md). Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) § "What W7 D3 adds". Prompt journal: [multistate-ai/PROMPT_JOURNAL.md](multistate-ai/PROMPT_JOURNAL.md).
 
+**Week 7 Day 4:** MCP server (`multistate-mcp-server/`) — FastMCP + shared `httpx.AsyncClient` lifespan, four tools (`orders.get_order`, `orders.create_refund`, `llm.chat`, `rag.retrieve_and_generate`), `multistate://catalogue` resource, stdio + SSE transports with JWT pass-through, structlog `tool.invoke.*` spans, fixture replay p50/p95/p99 gate, Testcontainers E2E, Claude Desktop config, and `multistate_mcp_server-ci` PR/merge tiers. Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) § "What W7 D4 adds". Prompt journal: [multistate-mcp-server/PROMPT_JOURNAL.md](multistate-mcp-server/PROMPT_JOURNAL.md). Registration: [multistate-mcp-server/mcp.json](multistate-mcp-server/mcp.json).
+
 ## Build & test
 
 ```bash
@@ -206,7 +208,7 @@ sam local invoke TenantLookupFunction --event events/get-tenant.json --env-vars 
 ./scripts/sam-smoke.sh      # post-deploy curl + CloudWatch REPORT check
 ```
 
-**Python sidecar (W7 D1–D3):**
+**Python sidecar (W7 D1–D3) + MCP server (W7 D4):**
 
 ```bash
 cd multistate-ai
@@ -225,9 +227,20 @@ uv run pytest -v tests/test_great_expectations_suite.py
 # uv run pytest -v -k test_ragas_baseline_thresholds
 # uv run python -m multistate_ai.scripts.assert_langsmith_run_visible
 uv run python src/multistate_ai/cli.py tests/fixtures/sample_request.json
+
+# W7 D4 MCP server (sibling project)
+cd ../multistate-mcp-server
+cp .env.example .env       # placeholders only — never commit real JWTs/keys
+uv sync --frozen
+uv run ruff check
+uv run mypy --strict src/ tests/
+uv run pytest -v tests/test_schemas.py tests/test_tool_descriptions.py tests/test_smoke_stdio.py
+uv run python -m multistate_mcp_server.scripts.replay --fixtures tests/fixtures/
+uv run multistate-mcp-server          # stdio (Claude Desktop)
+# MULTISTATE_MCP_HOST=127.0.0.1 MULTISTATE_MCP_PORT=8080 uv run multistate-mcp-server-sse
 ```
 
-See [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) for env vars (copy `.env.example` → `.env`, never commit `.env`).
+See [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) for sidecar env vars and the W7 D4 section for the MCP surface. Claude Desktop snippet: [multistate-mcp-server/configs/claude_desktop_config.json](multistate-mcp-server/configs/claude_desktop_config.json).
 
 Requires JDK 17+.
 

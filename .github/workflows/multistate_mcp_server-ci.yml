@@ -1,0 +1,66 @@
+# .github/workflows/multistate_mcp_server-ci.yml
+name: multistate-mcp-server-ci
+
+on:
+  pull_request:
+    paths: ["multistate-mcp-server/**"]
+  push:
+    branches: ["main"]
+    paths: ["multistate-mcp-server/**"]
+
+jobs:
+  per-pr:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: multistate-mcp-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: sync
+        run: uv sync --frozen
+      - name: ruff
+        run: uv run ruff check
+      - name: mypy strict
+        run: uv run mypy --strict src/ tests/
+      - name: unit + schema + smoke + descriptions
+        env:
+          MULTISTATE_MCP_BEARER_JWT: dummy-for-tests
+          LANGSMITH_TRACING: "false"
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: >
+          uv run pytest -v
+          tests/test_schemas.py
+          tests/test_smoke_stdio.py
+          tests/test_tool_descriptions.py
+      - name: tool fixture replay (CI gate)
+        run: uv run python -m multistate_mcp_server.scripts.replay --fixtures tests/fixtures/
+
+  merge-to-main:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: multistate-mcp-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: sync
+        run: uv sync --frozen
+      - name: testcontainers E2E
+        env:
+          LANGSMITH_TRACING: "false"
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: uv run pytest -v tests/test_e2e_mcp_to_spring.py
+      - name: fixture replay p95 regression vs committed baseline
+        run: >
+          uv run python -m multistate_mcp_server.scripts.replay
+          --fixtures tests/fixtures/
+          --report .replay/latest.json
+          --baseline tests/replay_baseline.json
+          --max-regression 0.15

@@ -192,3 +192,36 @@ the before-vs-after report. Two deviations from Claude's output we corrected:
    keyed Redis on the quantised embedding alone. We include
    ``tenant_id`` + per-tenant epoch in the key and treat any citation whose
    ``tenant_id`` mismatches the requester as a cache miss.
+
+## What W7 D4 adds
+
+Sibling project ``multistate-mcp-server/`` publishes the W7 D3 pipeline (and
+the W3 D1 orders / llm-proxy HTTP surfaces) as an MCP server with four tools:
+
+* ``orders.get_order`` / ``orders.create_refund`` — typed Pydantic args,
+  ``Decimal`` money, UUID idempotency key on the write.
+* ``llm.chat`` — forwards to llm-proxy ``/v1/chat/completions``; maps 429 →
+  ``McpError(4290)``.
+* ``rag.retrieve_and_generate`` — in-process adapter over
+  ``multistate_ai.rag.retrieve_and_generate``, pre-shaped to a small
+  ``RagAnswer`` DTO (answer + top-k citations + coverage +
+  ``rerank_timed_out``).
+
+Transports: stdio (Claude Desktop) and HTTP+SSE (W7 D5 agent) with JWKS /
+HS256 bearer validation. CI: ``.github/workflows/multistate_mcp_server-ci.yml``.
+
+## AI authoring discipline (W7 D4 additions)
+
+Claude scaffolded the MCP tools and FastMCP lifespan. Concrete deviations:
+
+1. **Rejected: float refund amount.** Claude typed ``amount: float``. We
+   require ``Decimal`` with a ≤2-decimal-places validator and serialise
+   ``str(args.amount)`` so Java ``BigDecimal`` reads the value exactly.
+
+2. **Rejected: raw RAG rows in the tool response.** Claude returned the
+   full ``retrieve_and_generate`` dict (including ``chunk_text``). We
+   pre-shape to ``RagAnswer`` / ``Citation`` so context-window cost stays
+   bounded for the W7 D5 agent.
+
+3. **Rejected: logging on stdout.** Claude left structlog on the default
+   print factory. We pin stderr so stdio JSON-RPC frames stay uncorrupted.
