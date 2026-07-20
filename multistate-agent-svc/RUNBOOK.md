@@ -9,8 +9,20 @@
 | 1 | synthesis cost p99 breach | Dollar budget burns on the final LLM call | Check LangSmith `synthesis_agent` spans; tighten prompt / max_tokens; confirm BudgetGuard ceiling |
 | 2 | retrieval p99 over deadline (3.0s) | `@deadline` sentinel empties `docs` → refusal answers | Inspect Redis cache hit rate + BGE rerank timeouts; scale pgvector / lower top-k |
 | 3 | RAGAS faithfulness 7-day median drop > 0.10 | Grounding regression | Diff `evals/last_run.json`, re-run corpus ingest DAG, check citation reshape |
-| 4 | BudgetAction fired (100% of $4000) | IAM DENY on llm-proxy for `multistate-agent-svc-role` | Detach Deny policy only after root-cause; raise budget only with ES approval |
+| 4 | BudgetAction fired (100% of $4000) | IAM DENY on llm-proxy for workload role | Detach Deny policy only after root-cause; raise budget only with ES approval |
 | 5 | Argo CD OutOfSync for `multistate-agent-svc` | Drift or failed image bump | `argocd app get multistate-agent-svc`; inspect config-repo overlay tag |
+
+## CloudFormation / Budgets IAM note
+
+Stack `multistate-agent-anthropic-monthly` requires `budgets:ModifyBudget` (and
+related Budgets APIs) on the deployer. Cohort trainee IAM currently returns
+`AccessDenied` on that action, so CREATE fails even with
+`CreateBudgetAction=false`. Ask ES to either:
+
+1. Grant `budgets:ModifyBudget` / `budgets:ViewBudget` / `budgets:CreateBudgetAction`, or
+2. Deploy `multistate-agent-svc/cfn/agent-svc-budget.yaml` from an admin role.
+
+Then enable the action with `--parameter-overrides CreateBudgetAction=true`.
 
 ## Defence-in-depth
 
