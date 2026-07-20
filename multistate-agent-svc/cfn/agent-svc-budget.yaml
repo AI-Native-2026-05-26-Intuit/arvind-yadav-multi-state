@@ -111,6 +111,8 @@ Resources:
   BudgetHardStop:
     Type: AWS::Budgets::BudgetsAction
     Condition: IncludeBudgetAction
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     DependsOn:
       - AgentSvcMonthlyBudget
       - DenyLlmProxyPolicy
@@ -121,8 +123,8 @@ Resources:
       ActionType: APPLY_IAM_POLICY
       NotificationType: ACTUAL
       ActionThreshold:
-        ActionThresholdValue: 100
-        ActionThresholdType: PERCENTAGE
+        Value: 100
+        Type: PERCENTAGE
       ApprovalModel: AUTOMATIC
       ExecutionRoleArn: !GetAtt AgentSvcBudgetExecutionRole.Arn
       Definition:

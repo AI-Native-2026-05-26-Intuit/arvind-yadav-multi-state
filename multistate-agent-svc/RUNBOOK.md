@@ -21,22 +21,14 @@ block recreate of the rubric name `multistate-agent-svc-role` (trainee lacks
 `iam:DeleteRolePolicy`).
 
 `budgets:CreateBudgetAction` works after Resource includes
-`.../budget/multistate-agent-anthropic-monthly/action/*`. BudgetsAction was
-created successfully (ActionId `d7dca034-b3c2-4b00-9703-73434474ad61`).
+`.../budget/multistate-agent-anthropic-monthly/action/*`. Stack parameter
+`CreateBudgetAction=true` is enabled; resource `BudgetHardStop`
+(`AWS::Budgets::BudgetsAction`) is **CREATE_COMPLETE** on stack
+`multistate-agent-anthropic-monthly` (**UPDATE_COMPLETE**).
 
-Managing the same action via CloudFormation (`CreateBudgetAction=true`) still
-hits `AWS::EarlyValidation::PropertyValidation`. Confirm the SNS email for
-`multistate-agent-anthropic-budget-alerts-w7d5v4` (may still show
-`PendingConfirmation`), then:
-
-```bash
-aws cloudformation deploy \
-  --stack-name multistate-agent-anthropic-monthly \
-  --template-file multistate-agent-svc/cfn/agent-svc-budget.yaml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region us-east-1 \
-  --parameter-overrides CreateBudgetAction=true
-```
+CFN `ActionThreshold` must use `Value` / `Type` (not the CLI names
+`ActionThresholdValue` / `ActionThresholdType`). SNS email on
+`multistate-agent-anthropic-budget-alerts-w7d5v4` is confirmed.
 
 ## Defence-in-depth
 
