@@ -38,6 +38,9 @@ jobs:
           tests/test_budget_guard.py
           tests/test_deadline.py
           tests/test_recursion_limit.py
+          tests/test_checkpointer_resume.py
+          tests/test_synthesis_refusal.py
+          tests/test_trajectory_eval.py
       - name: trajectory eval (CI gate)
         run: uv run python -m multistate_agent_svc.scripts.eval --gate
 

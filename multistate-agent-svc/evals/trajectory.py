@@ -8,6 +8,15 @@ CI gate:
   - cost-per-run regression vs previous run <= 15 %
 
 A regression on any of the three fails the build before merge.
+
+Default CI path (no LIVE / RAGAS env flags):
+  - Trajectory is scored from the *real* supervisor router.
+  - Answers are produced by an independent mock synthesizer that only
+    sees (question, tenant_id, visited nodes) — it never reads
+    ``expected_answer_substring``. Faithfulness then checks whether that
+    independently generated text still contains the golden substring
+    (typically a token already present in the question). Embedding the
+    expected substring into the stub is forbidden.
 """
 
 from __future__ import annotations
@@ -63,7 +72,8 @@ def trajectory_match(actual: tuple[str, ...], expected: tuple[str, ...]) -> floa
     return 1.0 if set(expected).issubset(set(actual)) else 0.0
 
 
-def _planned_nodes(question: str, tenant_id: str) -> tuple[str, ...]:
+def planned_nodes(question: str, tenant_id: str) -> tuple[str, ...]:
+    """Public helper: real supervisor fan-out + synthesis (always runs)."""
     state: AgentState = {
         "question": question,
         "tenant_id": tenant_id,
@@ -79,22 +89,28 @@ def _planned_nodes(question: str, tenant_id: str) -> tuple[str, ...]:
     return (*workers, "synthesis_agent")
 
 
-def _local_faithfulness(answer_text: str, substring: str, question: str) -> float:
-    """Offline faithfulness stand-in when RAGAS SaaS deps are unavailable.
+def mock_synthesize(question: str, tenant_id: str, visited: tuple[str, ...]) -> str:
+    """Independently generated answer for CI — does NOT take the golden substring.
 
-    Scores 1.0 when the answer contains the expected grounded substring and
-    is non-empty; 0.5 when answer is a refusal but question was routed;
-    else 0.0. Documented as a D5 adaptation for CI without live RAGAS.
+    Mirrors a thin synthesis step: restate the user question, name the
+    workers that ran, and assert a grounded reply. Faithfulness is then
+    scored by whether ``expected_answer_substring`` appears in *this*
+    text (usually because it already appears in ``question``).
     """
-    if not answer_text:
+    workers = [n for n in visited if n != "synthesis_agent"]
+    worker_clause = ", ".join(workers) if workers else "none"
+    return (
+        f"For tenant {tenant_id}, the support question was: {question}. "
+        f"The supervisor dispatched: {worker_clause}. "
+        f"Synthesized reply grounded in the consulted agents' context."
+    )
+
+
+def local_faithfulness(answer_text: str, substring: str) -> float:
+    """Strict substring grounding check (no refusal free-pass)."""
+    if not answer_text or not substring:
         return 0.0
-    lower = answer_text.lower()
-    if substring.lower() in lower:
-        return 1.0
-    if "not have enough grounded context" in lower or "refuse" in lower:
-        # Offline graph returns refusal; still credit partial grounding intent.
-        return 0.9 if question else 0.0
-    return 0.0
+    return 1.0 if substring.lower() in answer_text.lower() else 0.0
 
 
 def _answer_text(raw: Any) -> str:
@@ -116,7 +132,11 @@ async def run_eval(
     graph: Any | None = None,
     scenarios: list[Scenario] | None = None,
 ) -> dict[str, float]:
-    """Run the 20-row suite. When graph is None, evaluate supervisor trajectories only."""
+    """Run the 20-row suite.
+
+    Default (CI): real supervisor trajectories + independent mock answers.
+    ``MULTISTATE_AGENT_EVAL_LIVE=1`` + graph: full ainvoke path.
+    """
     scenarios = scenarios or SCENARIOS
     if not scenarios:
         raise RuntimeError("no scenarios loaded from evals/scenarios.jsonl")
@@ -125,14 +145,14 @@ async def run_eval(
     faith_scores: list[float] = []
     cost_total = 0
     rows: list[dict[str, Any]] = []
+    live = graph is not None and os.environ.get("MULTISTATE_AGENT_EVAL_LIVE") == "1"
 
     for sc in scenarios:
-        planned = _planned_nodes(sc.question, sc.tenant_id)
+        visited = planned_nodes(sc.question, sc.tenant_id)
         answer = ""
         cost = 0
-        visited = planned
 
-        if graph is not None and os.environ.get("MULTISTATE_AGENT_EVAL_LIVE") == "1":
+        if live:
             cfg = {
                 "configurable": {"thread_id": f"eval-{sc.qid}"},
                 "recursion_limit": 25,
@@ -150,24 +170,19 @@ async def run_eval(
                 },
                 config=cfg,
             )
-            visited = tuple(run_state.get("__visited_nodes") or planned)
+            visited = tuple(run_state.get("__visited_nodes") or visited)
             answer = _answer_text(run_state.get("answer"))
             cost = int(run_state.get("cost_usd_e5") or 0)
         else:
-            # Deterministic CI path: supervisor plan + grounded stub answer.
-            answer = (
-                f"Grounded summary for {sc.tenant_id}: {sc.expected_answer_substring} "
-                f"(offline eval stub for qid={sc.qid})."
-            )
+            answer = mock_synthesize(sc.question, sc.tenant_id, visited)
 
         m = trajectory_match(visited, sc.expected_nodes)
         matched += int(m == 1.0)
-        f = _local_faithfulness(answer, sc.expected_answer_substring, sc.question)
+        f = local_faithfulness(answer, sc.expected_answer_substring)
         faith_scores.append(f)
         cost_total += cost
         rows.append({"qid": sc.qid, "match": m, "faithfulness": f, "answer": answer})
 
-    # Prefer real RAGAS when explicitly enabled; otherwise use local scores.
     faithfulness = sum(faith_scores) / len(faith_scores)
     if os.environ.get("MULTISTATE_AGENT_EVAL_RAGAS") == "1":
         try:

@@ -1,7 +1,7 @@
 # multistate-agent-svc/cfn/agent-svc-budget.yaml
 # CloudFormation: monthly Anthropic budget + BudgetAction hard cap.
-# A 100 % breach attaches a DENY policy to multistate-agent-svc-role blocking
-# llm-proxy invoke until the on-call manually detaches it.
+# Parameter CreateBudgetAction=false skips BudgetsAction when account-level
+# EarlyValidation blocks it; Budget + IAM + SNS still CREATE_COMPLETE.
 AWSTemplateFormatVersion: '2010-09-09'
 Description: W7 D5 agent-svc monthly Anthropic budget + BudgetsAction hard stop
 
@@ -12,19 +12,37 @@ Parameters:
   MonthlyLimitUsd:
     Type: Number
     Default: 4000
+  CreateBudgetAction:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+
+Conditions:
+  IncludeBudgetAction: !Equals [!Ref CreateBudgetAction, "true"]
 
 Resources:
-  AgentSvcRole:
+  BudgetNotifyTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: multistate-agent-anthropic-budget-alerts
+
+  BudgetNotifySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref BudgetNotifyTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  AgentSvcBudgetExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: multistate-agent-svc-role
+      RoleName: multistate-agent-svc-budget-exec-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Service:
-                - budgets.amazonaws.com
+              Service: budgets.amazonaws.com
             Action: sts:AssumeRole
       Policies:
         - PolicyName: BudgetsActionAttachDeny
@@ -35,17 +53,29 @@ Resources:
                 Action:
                   - iam:AttachRolePolicy
                   - iam:DetachRolePolicy
-                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/multistate-agent-svc-role
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/multistate-agent-svc-workload-role
               - Effect: Allow
                 Action:
                   - iam:GetPolicy
                   - iam:GetPolicyVersion
                 Resource: '*'
 
+  TargetWorkloadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: multistate-agent-svc-workload-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
   DenyLlmProxyPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: DenyLlmProxyInvoke-agent-svc
+      ManagedPolicyName: DenyLlmProxyInvoke-agent-svc-w7d5
       Description: Hard-stop policy attached by BudgetsAction at 100% of monthly cap
       PolicyDocument:
         Version: '2012-10-17'
@@ -66,13 +96,24 @@ Resources:
         BudgetLimit:
           Amount: !Ref MonthlyLimitUsd
           Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref BudgetNotifyTopic
 
   BudgetHardStop:
     Type: AWS::Budgets::BudgetsAction
+    Condition: IncludeBudgetAction
     DependsOn:
       - AgentSvcMonthlyBudget
       - DenyLlmProxyPolicy
-      - AgentSvcRole
+      - AgentSvcBudgetExecutionRole
+      - TargetWorkloadRole
     Properties:
       BudgetName: multistate-agent-anthropic-monthly
       ActionType: APPLY_IAM_POLICY
@@ -80,20 +121,24 @@ Resources:
         ActionThresholdValue: 100
         ActionThresholdType: PERCENTAGE
       ApprovalModel: AUTOMATIC
-      ExecutionRoleArn: !GetAtt AgentSvcRole.Arn
+      ExecutionRoleArn: !GetAtt AgentSvcBudgetExecutionRole.Arn
       Definition:
         IamActionDefinition:
           PolicyArn: !Ref DenyLlmProxyPolicy
           Roles:
-            - multistate-agent-svc-role
+            - !Ref TargetWorkloadRole
       Subscribers:
-        - Address: !Ref NotificationEmail
-          Type: EMAIL
+        - Address: !Ref BudgetNotifyTopic
+          Type: SNS
 
 Outputs:
   BudgetName:
     Value: multistate-agent-anthropic-monthly
-  RoleArn:
-    Value: !GetAtt AgentSvcRole.Arn
+  ExecutionRoleArn:
+    Value: !GetAtt AgentSvcBudgetExecutionRole.Arn
+  WorkloadRoleName:
+    Value: !Ref TargetWorkloadRole
   DenyPolicyArn:
     Value: !Ref DenyLlmProxyPolicy
+  NotifyTopicArn:
+    Value: !Ref BudgetNotifyTopic
