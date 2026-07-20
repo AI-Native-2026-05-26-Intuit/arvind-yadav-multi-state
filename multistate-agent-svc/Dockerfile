@@ -18,7 +18,10 @@ COPY multistate-agent-svc /app
 RUN sed -i 's|path = "../multistate-ai"|path = "/deps/multistate-ai"|' pyproject.toml \
  && sed -i 's|path = "../multistate-mcp-server"|path = "/deps/multistate-mcp-server"|' pyproject.toml
 
-RUN uv pip install --system .
+RUN UV_HTTP_TIMEOUT=300 uv pip install --system \
+      --allow-insecure-host pypi.org \
+      --allow-insecure-host files.pythonhosted.org \
+      .
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
