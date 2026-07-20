@@ -23,10 +23,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out config repo
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4.1.7
 
       - name: Set up Python (for cfn-lint)
-        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f  # v5.1.1
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
       # cfn-lint>=1.44.0 required by cfn-lint-serverless>=0.3.5

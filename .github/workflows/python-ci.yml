@@ -35,7 +35,7 @@ jobs:
       TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - name: Check out source
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608  # v4.1.7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4.1.7
 
       - name: Install uv (pinned)
         uses: astral-sh/setup-uv@b75a909f75acd358c2196fb9a5f1299a9a8868a4  # v3.1.7
