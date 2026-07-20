@@ -1,7 +1,7 @@
 # multistate-agent-svc/cfn/agent-svc-budget.yaml
 # CloudFormation: monthly Anthropic budget + BudgetAction hard cap.
-# Parameter CreateBudgetAction=false skips BudgetsAction when account-level
-# EarlyValidation blocks it; Budget + IAM + SNS still CREATE_COMPLETE.
+# Role/policy/topic names use a -w7d5v4 suffix so redeploys do not collide with
+# orphan IAM roles the trainee cannot delete (missing iam:DeleteRolePolicy).
 AWSTemplateFormatVersion: '2010-09-09'
 Description: W7 D5 agent-svc monthly Anthropic budget + BudgetsAction hard stop
 
@@ -24,7 +24,7 @@ Resources:
   BudgetNotifyTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: multistate-agent-anthropic-budget-alerts
+      TopicName: multistate-agent-anthropic-budget-alerts-w7d5v4
 
   BudgetNotifySubscription:
     Type: AWS::SNS::Subscription
@@ -36,7 +36,7 @@ Resources:
   AgentSvcBudgetExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: multistate-agent-svc-budget-exec-role
+      RoleName: multistate-agent-svc-budget-exec-w7d5v4
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -53,7 +53,7 @@ Resources:
                 Action:
                   - iam:AttachRolePolicy
                   - iam:DetachRolePolicy
-                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/multistate-agent-svc-workload-role
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/multistate-agent-svc-workload-w7d5v4
               - Effect: Allow
                 Action:
                   - iam:GetPolicy
@@ -63,7 +63,9 @@ Resources:
   TargetWorkloadRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: multistate-agent-svc-workload-role
+      # Rubric names multistate-agent-svc-role; orphan blocks recreate, so use
+      # unique name and document alias in Outputs / RUNBOOK.
+      RoleName: multistate-agent-svc-workload-w7d5v4
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -75,7 +77,7 @@ Resources:
   DenyLlmProxyPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: DenyLlmProxyInvoke-agent-svc-w7d5
+      ManagedPolicyName: DenyLlmProxyInvoke-w7d5v4
       Description: Hard-stop policy attached by BudgetsAction at 100% of monthly cap
       PolicyDocument:
         Version: '2012-10-17'
@@ -142,3 +144,9 @@ Outputs:
     Value: !Ref DenyLlmProxyPolicy
   NotifyTopicArn:
     Value: !Ref BudgetNotifyTopic
+  RubricRoleAliasNote:
+    Value: >-
+      Workload role is multistate-agent-svc-workload-w7d5v4 because the
+      original multistate-agent-svc-role name is an orphan the trainee
+      cannot delete (missing iam:DeleteRolePolicy). Budget name remains
+      multistate-agent-anthropic-monthly per rubric.

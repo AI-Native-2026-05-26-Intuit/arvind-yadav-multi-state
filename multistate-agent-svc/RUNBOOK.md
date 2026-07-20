@@ -14,15 +14,26 @@
 
 ## CloudFormation / Budgets IAM note
 
-Stack `multistate-agent-anthropic-monthly` requires `budgets:ModifyBudget` (and
-related Budgets APIs) on the deployer. Cohort trainee IAM currently returns
-`AccessDenied` on that action, so CREATE fails even with
-`CreateBudgetAction=false`. Ask ES to either:
+Stack `multistate-agent-anthropic-monthly` is **CREATE_COMPLETE** with budget
+`multistate-agent-anthropic-monthly` ($4000 COST / MONTHLY). IAM role/policy/topic
+names use a `-w7d5v4` suffix because orphan roles from earlier failed deletes
+block recreate of the rubric name `multistate-agent-svc-role` (trainee lacks
+`iam:DeleteRolePolicy`).
 
-1. Grant `budgets:ModifyBudget` / `budgets:ViewBudget` / `budgets:CreateBudgetAction`, or
-2. Deploy `multistate-agent-svc/cfn/agent-svc-budget.yaml` from an admin role.
+`AWS::Budgets::BudgetsAction` is gated by parameter `CreateBudgetAction`
+(default `false`). Enabling it fails EarlyValidation / CLI
+`budgets:CreateBudgetAction` **AccessDenied** for the trainee identity. Ask ES to
+grant `budgets:CreateBudgetAction` (and confirm the SNS email subscription on
+`multistate-agent-anthropic-budget-alerts-w7d5v4`), then:
 
-Then enable the action with `--parameter-overrides CreateBudgetAction=true`.
+```bash
+aws cloudformation deploy \
+  --stack-name multistate-agent-anthropic-monthly \
+  --template-file multistate-agent-svc/cfn/agent-svc-budget.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1 \
+  --parameter-overrides CreateBudgetAction=true
+```
 
 ## Defence-in-depth
 

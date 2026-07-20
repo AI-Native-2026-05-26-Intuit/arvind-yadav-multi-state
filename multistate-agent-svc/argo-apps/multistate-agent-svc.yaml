@@ -1,6 +1,7 @@
 # multistate-agent-svc/argo-apps/multistate-agent-svc.yaml
 # Argo CD Application reconciling agent-svc into the cluster.
-# Adapted to the trainee config repo + multistate AppProject (W6 D2).
+# Destination namespace must be allowlisted by AppProject `multistate`
+# (multistate-dev | multistate-staging | multistate-prod) — not multistate-svc.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -13,11 +14,12 @@ spec:
   project: multistate
   source:
     repoURL: https://github.com/AI-Native-2026-05-26-Intuit/arvind-yadav-multistate-config.git
-    targetRevision: main
+    # Until config PR #5 merges, sync the feature branch that owns overlays/agent-svc.
+    targetRevision: w7d5-agent-svc-overlay
     path: overlays/agent-svc
   destination:
     server: https://kubernetes.default.svc
-    namespace: multistate-svc
+    namespace: multistate-dev
   syncPolicy:
     automated:
       prune: true
