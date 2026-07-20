@@ -119,6 +119,7 @@ Resources:
     Properties:
       BudgetName: multistate-agent-anthropic-monthly
       ActionType: APPLY_IAM_POLICY
+      NotificationType: ACTUAL
       ActionThreshold:
         ActionThresholdValue: 100
         ActionThresholdType: PERCENTAGE
