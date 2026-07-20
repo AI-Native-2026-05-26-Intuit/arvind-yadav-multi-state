@@ -20,11 +20,14 @@ names use a `-w7d5v4` suffix because orphan roles from earlier failed deletes
 block recreate of the rubric name `multistate-agent-svc-role` (trainee lacks
 `iam:DeleteRolePolicy`).
 
-`AWS::Budgets::BudgetsAction` is gated by parameter `CreateBudgetAction`
-(default `false`). Enabling it fails EarlyValidation / CLI
-`budgets:CreateBudgetAction` **AccessDenied** for the trainee identity. Ask ES to
-grant `budgets:CreateBudgetAction` (and confirm the SNS email subscription on
-`multistate-agent-anthropic-budget-alerts-w7d5v4`), then:
+`budgets:CreateBudgetAction` works after Resource includes
+`.../budget/multistate-agent-anthropic-monthly/action/*`. BudgetsAction was
+created successfully (ActionId `d7dca034-b3c2-4b00-9703-73434474ad61`).
+
+Managing the same action via CloudFormation (`CreateBudgetAction=true`) still
+hits `AWS::EarlyValidation::PropertyValidation`. Confirm the SNS email for
+`multistate-agent-anthropic-budget-alerts-w7d5v4` (may still show
+`PendingConfirmation`), then:
 
 ```bash
 aws cloudformation deploy \
