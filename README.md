@@ -187,6 +187,8 @@ aws ecr describe-images \
 
 **Week 7 Day 4:** MCP server (`multistate-mcp-server/`) — FastMCP + shared `httpx.AsyncClient` lifespan, four tools (`orders.get_order`, `orders.create_refund`, `llm.chat`, `rag.retrieve_and_generate`), `multistate://catalogue` resource, stdio + SSE transports with JWT pass-through, structlog `tool.invoke.*` spans, fixture replay p50/p95/p99 gate, Testcontainers E2E, Claude Desktop config, and `multistate_mcp_server-ci` PR/merge tiers. Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) § "What W7 D4 adds". Prompt journal: [multistate-mcp-server/PROMPT_JOURNAL.md](multistate-mcp-server/PROMPT_JOURNAL.md). Registration: [multistate-mcp-server/mcp.json](multistate-mcp-server/mcp.json).
 
+**Week 7 Day 5:** LangGraph multi-agent capstone (`multistate-agent-svc/`) — three-node graph (`retrieval_agent` / `api_agent` / `synthesis_agent`) with supervisor `list[Send]` routing, `AgentState` reducers, `AsyncPostgresSaver` checkpointer, per-node `@deadline` (3/5/8s), `BudgetGuard` (25000 × 1e-5 USD) + `recursion_limit=25`, Instructor-typed `FinalAnswer` + refusal path, SSE bridge to the W4 D4 useChat protocol, 20-row trajectory eval CI gate, Argo CD Application + CloudFormation BudgetsAction hard cap, and `multistate_agent_svc-ci`. Project README: [multistate-agent-svc/README.md](multistate-agent-svc/README.md). On-call: [multistate-agent-svc/RUNBOOK.md](multistate-agent-svc/RUNBOOK.md). Details: [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) § "What W7 D5 adds". Prompt journal: [multistate-agent-svc/PROMPT_JOURNAL.md](multistate-agent-svc/PROMPT_JOURNAL.md).
+
 ## Build & test
 
 ```bash
@@ -238,9 +240,19 @@ uv run pytest -v tests/test_schemas.py tests/test_tool_descriptions.py tests/tes
 uv run python -m multistate_mcp_server.scripts.replay --fixtures tests/fixtures/
 uv run multistate-mcp-server          # stdio (Claude Desktop)
 # MULTISTATE_MCP_HOST=127.0.0.1 MULTISTATE_MCP_PORT=8080 uv run multistate-mcp-server-sse
+
+# W7 D5 agent-svc (LangGraph multi-agent capstone)
+cd ../multistate-agent-svc
+cp .env.example .env
+uv sync --frozen
+uv run ruff check
+uv run mypy --strict src/ tests/ evals/
+TESTCONTAINERS_RYUK_DISABLED=true uv run pytest -v tests/
+uv run python -m multistate_agent_svc.scripts.eval --gate
+uv run multistate-agent-svc           # uvicorn :8080 — /v1/chat/stream
 ```
 
-See [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) for sidecar env vars and the W7 D4 section for the MCP surface. Claude Desktop snippet: [multistate-mcp-server/configs/claude_desktop_config.json](multistate-mcp-server/configs/claude_desktop_config.json).
+See [multistate-ai/PYTHON.md](multistate-ai/PYTHON.md) for sidecar env vars, the W7 D4 section for the MCP surface, and the W7 D5 section for the agent-svc. Claude Desktop snippet: [multistate-mcp-server/configs/claude_desktop_config.json](multistate-mcp-server/configs/claude_desktop_config.json).
 
 Requires JDK 17+.
 

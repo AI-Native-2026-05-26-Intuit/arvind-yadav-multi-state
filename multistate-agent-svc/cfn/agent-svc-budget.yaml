@@ -1,0 +1,155 @@
+# multistate-agent-svc/cfn/agent-svc-budget.yaml
+# CloudFormation: monthly Anthropic budget + BudgetAction hard cap.
+# Role/policy/topic names use a -w7d5v4 suffix so redeploys do not collide with
+# orphan IAM roles the trainee cannot delete (missing iam:DeleteRolePolicy).
+AWSTemplateFormatVersion: '2010-09-09'
+Description: W7 D5 agent-svc monthly Anthropic budget + BudgetsAction hard stop
+
+Parameters:
+  NotificationEmail:
+    Type: String
+    Default: arvind_yadav1@intuit.com
+  MonthlyLimitUsd:
+    Type: Number
+    Default: 4000
+  CreateBudgetAction:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+
+Conditions:
+  IncludeBudgetAction: !Equals [!Ref CreateBudgetAction, "true"]
+
+Resources:
+  BudgetNotifyTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: multistate-agent-anthropic-budget-alerts-w7d5v4
+
+  BudgetNotifySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref BudgetNotifyTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  AgentSvcBudgetExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: multistate-agent-svc-budget-exec-w7d5v4
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BudgetsActionAttachDeny
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/multistate-agent-svc-workload-w7d5v4
+              - Effect: Allow
+                Action:
+                  - iam:GetPolicy
+                  - iam:GetPolicyVersion
+                Resource: '*'
+
+  TargetWorkloadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # Rubric names multistate-agent-svc-role; orphan blocks recreate, so use
+      # unique name and document alias in Outputs / RUNBOOK.
+      RoleName: multistate-agent-svc-workload-w7d5v4
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  DenyLlmProxyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: DenyLlmProxyInvoke-w7d5v4
+      Description: Hard-stop policy attached by BudgetsAction at 100% of monthly cap
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyLlmProxyInvoke
+            Effect: Deny
+            Action:
+              - execute-api:Invoke
+            Resource: '*'
+
+  AgentSvcMonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: multistate-agent-anthropic-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyLimitUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref BudgetNotifyTopic
+
+  BudgetHardStop:
+    Type: AWS::Budgets::BudgetsAction
+    Condition: IncludeBudgetAction
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    DependsOn:
+      - AgentSvcMonthlyBudget
+      - DenyLlmProxyPolicy
+      - AgentSvcBudgetExecutionRole
+      - TargetWorkloadRole
+    Properties:
+      BudgetName: multistate-agent-anthropic-monthly
+      ActionType: APPLY_IAM_POLICY
+      NotificationType: ACTUAL
+      ActionThreshold:
+        Value: 100
+        Type: PERCENTAGE
+      ApprovalModel: AUTOMATIC
+      ExecutionRoleArn: !GetAtt AgentSvcBudgetExecutionRole.Arn
+      Definition:
+        IamActionDefinition:
+          PolicyArn: !Ref DenyLlmProxyPolicy
+          Roles:
+            - !Ref TargetWorkloadRole
+      Subscribers:
+        - Address: !Ref BudgetNotifyTopic
+          Type: SNS
+
+Outputs:
+  BudgetName:
+    Value: multistate-agent-anthropic-monthly
+  ExecutionRoleArn:
+    Value: !GetAtt AgentSvcBudgetExecutionRole.Arn
+  WorkloadRoleName:
+    Value: !Ref TargetWorkloadRole
+  DenyPolicyArn:
+    Value: !Ref DenyLlmProxyPolicy
+  NotifyTopicArn:
+    Value: !Ref BudgetNotifyTopic
+  RubricRoleAliasNote:
+    Value: >-
+      Workload role is multistate-agent-svc-workload-w7d5v4 because the
+      original multistate-agent-svc-role name is an orphan the trainee
+      cannot delete (missing iam:DeleteRolePolicy). Budget name remains
+      multistate-agent-anthropic-monthly per rubric.

@@ -1,0 +1,20 @@
+{"qid": "docs-only-01", "question": "what is the policy on tenant returns", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "returns"}
+{"qid": "docs-only-02", "question": "how do i apply the refund rule", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "refund"}
+{"qid": "docs-only-03", "question": "show docs about shipping policy", "tenant_id": "tenant-b", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "shipping"}
+{"qid": "docs-only-04", "question": "what is the rule for partial returns", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "returns"}
+{"qid": "docs-only-05", "question": "policy for damaged goods", "tenant_id": "tenant-c", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "policy"}
+{"qid": "api-only-01", "question": "what is the status of order ord-synth-9001", "tenant_id": "tenant-a", "expected_nodes": ["api_agent", "synthesis_agent"], "expected_answer_substring": "ord-synth-9001"}
+{"qid": "api-only-02", "question": "show order ord-synth-9001 details", "tenant_id": "tenant-a", "expected_nodes": ["api_agent", "synthesis_agent"], "expected_answer_substring": "ord-synth-9001"}
+{"qid": "api-only-03", "question": "create a refund for this order", "tenant_id": "tenant-b", "expected_nodes": ["api_agent", "synthesis_agent"], "expected_answer_substring": "refund"}
+{"qid": "api-only-04", "question": "refund status for my recent purchase", "tenant_id": "tenant-a", "expected_nodes": ["api_agent", "synthesis_agent"], "expected_answer_substring": "refund"}
+{"qid": "api-only-05", "question": "order tracking for ord-synth-9001", "tenant_id": "tenant-c", "expected_nodes": ["api_agent", "synthesis_agent"], "expected_answer_substring": "ord-synth-9001"}
+{"qid": "both-01", "question": "look up order ord-synth-9001 and tell me the refund policy", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "api_agent", "synthesis_agent"], "expected_answer_substring": "refund"}
+{"qid": "both-02", "question": "order status and return policy for ord-synth-9001", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "api_agent", "synthesis_agent"], "expected_answer_substring": "policy"}
+{"qid": "both-03", "question": "how do i refund order ord-synth-9001 per policy", "tenant_id": "tenant-b", "expected_nodes": ["retrieval_agent", "api_agent", "synthesis_agent"], "expected_answer_substring": "refund"}
+{"qid": "both-04", "question": "docs on refunds plus status of order ord-synth-9001", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "api_agent", "synthesis_agent"], "expected_answer_substring": "refund"}
+{"qid": "both-05", "question": "rule for returns on order ord-synth-9001", "tenant_id": "tenant-c", "expected_nodes": ["retrieval_agent", "api_agent", "synthesis_agent"], "expected_answer_substring": "returns"}
+{"qid": "default-01", "question": "hello can you help", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "help"}
+{"qid": "default-02", "question": "general greeting", "tenant_id": "tenant-b", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "greeting"}
+{"qid": "docs-only-06", "question": "policy docs for warranty", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "synthesis_agent"], "expected_answer_substring": "warranty"}
+{"qid": "api-only-06", "question": "status check please on my order", "tenant_id": "tenant-a", "expected_nodes": ["api_agent", "synthesis_agent"], "expected_answer_substring": "status"}
+{"qid": "both-06", "question": "policy and refund for order ord-synth-9001", "tenant_id": "tenant-a", "expected_nodes": ["retrieval_agent", "api_agent", "synthesis_agent"], "expected_answer_substring": "refund"}

@@ -225,3 +225,40 @@ Claude scaffolded the MCP tools and FastMCP lifespan. Concrete deviations:
 
 3. **Rejected: logging on stdout.** Claude left structlog on the default
    print factory. We pin stderr so stdio JSON-RPC frames stay uncorrupted.
+
+## What W7 D5 adds
+
+Sibling project ``multistate-agent-svc/`` — LangGraph multi-agent capstone
+that **consumes** the W7 D4 MCP server (catalogue + tools) and the W7 D3
+``retrieve_and_generate`` pipeline:
+
+* Three-node graph: ``retrieval_agent`` / ``api_agent`` / ``synthesis_agent``
+  with a supervisor returning ``list[Send]`` (keyword routing; defaults to
+  retrieval so the graph never answers blind).
+* ``AgentState`` reducers on parallel slots (``docs``, ``tool_results``,
+  ``cost_usd_e5``); ``AsyncPostgresSaver`` checkpointer + ``thread_id``
+  discipline; ``recursion_limit=25`` + ``BudgetGuard`` (25000 × 1e-5 USD).
+* Instructor-typed ``FinalAnswer`` with refusal path; SSE bridge to the
+  W4 D4 useChat data-stream protocol; trajectory eval CI gate.
+* Argo CD Application CR + CloudFormation BudgetsAction hard cap;
+  ``PROMPT_JOURNAL.md`` + ``RUNBOOK.md``.
+
+## AI authoring discipline (W7 D5 additions)
+
+Claude scaffolded the three-node graph and Instructor synthesis. Concrete
+deviations:
+
+1. **Rejected: bare parallel state slots.** Claude left ``docs`` /
+   ``tool_results`` un-annotated. Under supervisor fan-out the last writer
+   would wipe the other leg — we require ``Annotated[..., operator.add]``
+   and a last-write-wins merger.
+
+2. **Rejected: sync PostgresSaver + MemorySaver smoke path.** Claude used
+   sync ``PostgresSaver`` / ``graph.invoke`` with async MCP nodes, and
+   suggested ``MemorySaver`` for local runs. We use ``AsyncPostgresSaver``
+   + ``ainvoke`` / ``astream_events`` only — ``grep MemorySaver src/`` is
+   zero.
+
+3. **Rejected: free-text synthesis.** Claude returned markdown strings.
+   We force Instructor ``response_model=FinalAnswer`` with
+   ``max_retries=2`` and an empty-context refusal (confidence < 0.4).
