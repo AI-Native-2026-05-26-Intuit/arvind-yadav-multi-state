@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: multistate-mcp-server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
@@ -45,7 +45,7 @@ jobs:
       run:
         working-directory: multistate-mcp-server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
